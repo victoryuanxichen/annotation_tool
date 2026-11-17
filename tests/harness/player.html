@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Player harness</title>
+    <style>
+      body { margin: 0; padding: 16px; background: #1c1d1f; color: #d8d9db; font: 13px/1.4 system-ui, sans-serif; }
+      canvas { display: block; width: 960px; height: 540px; background: #000; }
+      #status { margin-top: 8px; font: 12px/1.4 ui-monospace, monospace; white-space: pre; }
+    </style>
+  </head>
+  <body>
+    <canvas id="screen"></canvas>
+    <div id="status">loading…</div>
+    <script type="module" src="./player.ts"></script>
+  </body>
+</html>

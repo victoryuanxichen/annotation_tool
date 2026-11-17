@@ -1,0 +1,115 @@
+/*
+ * Design tokens. Dark graphite workbench; one accent (cyan) for focus, selection and the
+ * playhead. Cyan was chosen over amber because surgical video is dominated by reds, pinks
+ * and yellows: a cool accent stays legible over and next to the footage, and amber is kept
+ * free to mean "unsaved / attention" without ambiguity.
+ */
+:root {
+  color-scheme: dark;
+
+  /* Neutrals (low → high elevation) */
+  --c-well: #0f1113;          /* video well, deepest surface */
+  --c-bg: #16181b;            /* app background */
+  --c-panel: #1d2024;         /* panels, bars */
+  --c-raised: #24282d;        /* inputs, hovered rows */
+  --c-raised-2: #2b3036;      /* pressed / active controls */
+  --c-overlay: #22262b;       /* popovers, menus, dialogs */
+  --c-line: #2c3036;          /* 1 px hairlines */
+  --c-line-strong: #3a4048;   /* control borders */
+  --c-scrim: rgb(8 9 11 / 0.62);
+
+  /* Text */
+  --c-text: #e6e8eb;          /* 13.3:1 on --c-panel */
+  --c-text-muted: #9aa1a9;    /* 6.3:1 on --c-panel, 5.7:1 on --c-raised */
+  --c-text-faint: #737b84;    /* 3.8:1 — disabled / non-essential only, never body text */
+  --c-text-on-accent: #071519;
+
+  /* Accent */
+  --c-accent: #4cc3e0;
+  --c-accent-hover: #74d2e9;
+  --c-accent-press: #36a9c6;
+  --c-accent-weak: rgb(76 195 224 / 0.14);
+  --c-accent-line: rgb(76 195 224 / 0.45);
+
+  /* Semantic state (save/export/verification only) */
+  --c-ok: #5cbf8a;
+  --c-ok-weak: rgb(92 191 138 / 0.1);
+  --c-warn: #e0a84a;
+  --c-warn-weak: rgb(224 168 74 / 0.1);
+  --c-danger: #ee6b5d;
+  --c-danger-weak: rgb(238 107 93 / 0.11);
+  --c-danger-press: #d65446;
+  --c-info: var(--c-text-muted);
+
+  /* Phase palette (see src/styles/palette.ts) */
+  --phase-1: #e5675b;
+  --phase-2: #ec9a46;
+  --phase-3: #dcc24c;
+  --phase-4: #9ccb5a;
+  --phase-5: #4bb57a;
+  --phase-6: #33a596;
+  --phase-7: #5b9cf0;
+  --phase-8: #8c7ef0;
+  --phase-9: #c06ad6;
+  --phase-10: #e26aa4;
+  --phase-11: #b38a62;
+  --phase-12: #98a3af;
+
+  /* Typography */
+  --font-sans: 'IBM Plex Sans', 'PingFang TC', 'Noto Sans TC', 'Microsoft JhengHei', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, 'PingFang TC', 'Noto Sans TC',
+    'Microsoft JhengHei', monospace;
+  --fs-11: 11px;
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-15: 15px;
+  --lh-11: 16px;
+  --lh-12: 16px;
+  --lh-13: 20px;
+  --lh-15: 22px;
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+
+  /* Spacing (4 px grid) */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+
+  /* Radii (max 6 px) */
+  --r-1: 2px;
+  --r-2: 4px;
+  --r-3: 6px;
+
+  /* Control sizes */
+  --h-sm: 24px;
+  --h-md: 28px;
+  --h-lg: 32px;
+
+  /* Lines and focus */
+  --hairline: 1px solid var(--c-line);
+  --focus-ring: 2px solid var(--c-accent);
+  --focus-offset: 2px;
+
+  /* Elevation is for floating layers only (never cards) */
+  --shadow-float: 0 8px 24px rgb(0 0 0 / 0.45), 0 0 0 1px rgb(0 0 0 / 0.25);
+
+  /* Motion (≤ 120 ms; zeroed under reduced motion in base.css) */
+  --dur-fast: 80ms;
+  --dur-base: 120ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Layers */
+  --z-raised: 1;
+  --z-sticky: 10;
+  --z-banner: 50;
+  --z-modal: 200;
+  --z-popover: 300;
+  --z-toast: 400;
+  --z-tooltip: 500;
+}
