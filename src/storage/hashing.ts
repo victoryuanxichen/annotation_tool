@@ -87,6 +87,11 @@ class WorkerBackend implements HashBackend {
     });
   }
 
+  /** Creates the worker now so its script is fetched while the local server is reachable. */
+  warm(): void {
+    this.getWorker();
+  }
+
   private getWorker(): Worker {
     if (this.worker) return this.worker;
     const worker = new Worker(new URL('../workers/hash.worker.ts', import.meta.url), { type: 'module' });
@@ -144,6 +149,21 @@ function jobKey(file: Blob, relPath: string | null | undefined): string {
     blobKeys.set(file, k);
   }
   return k;
+}
+
+/**
+ * Starts the hash worker at app start instead of on the first video, so its module is already
+ * loaded if the local server stops (or the network is emulated offline) afterwards.
+ */
+export function warmHashWorker(): void {
+  const b = getBackend();
+  if (b instanceof WorkerBackend) {
+    try {
+      b.warm();
+    } catch {
+      // Worker creation failures surface on first real use.
+    }
+  }
 }
 
 /** `fp1:<size>:<sha256 of first+last MiB>`; fast, for provisional draft lookup only. */

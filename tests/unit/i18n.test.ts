@@ -15,7 +15,7 @@ import {
   t,
   translate,
 } from '../../src/i18n';
-import { parseIntInRange } from '../../src/ui/kit/TextInput';
+import { parseIntInRange, resolveNumberCommit } from '../../src/ui/kit/TextInput';
 import { middleTruncate, fitMiddle } from '../../src/ui/kit/MiddleEllipsis';
 import { shortcutTokens, formatShortcut } from '../../src/ui/kit/Kbd';
 
@@ -79,7 +79,7 @@ describe('translate', () => {
   it('interpolates {name} params, including numbers and repeated names', () => {
     expect(interpolate('{a} and {a} of {b}', { a: 1, b: 'x' })).toBe('1 and 1 of x');
     expect(translate('en', 'save.saved', { time: '14:02:11' })).toBe('Saved 14:02:11');
-    expect(translate('zh-Hant', 'segments.count', { count: 3 })).toBe('片段：3');
+    expect(translate('zh-Hant', 'segments.count', { count: 3 })).toBe('3 個片段');
   });
 
   it('leaves unknown placeholders visible and ignores extra params', () => {
@@ -192,6 +192,14 @@ describe('ui kit pure helpers', () => {
     expect(parseIntInRange('', 0, 9000)).toEqual({ ok: false, reason: 'format' });
     expect(parseIntInRange('9001', 0, 9000)).toEqual({ ok: false, reason: 'range' });
     expect(parseIntInRange('-1', 0, 9000)).toEqual({ ok: false, reason: 'range' });
+  });
+
+  it('Enter in a number field commits the shown value when nothing was typed (jump field releases focus)', () => {
+    expect(resolveNumberCommit(null, 4, 0, 249)).toEqual({ kind: 'commit', value: 4 });
+    expect(resolveNumberCommit(null, null, 0, 249)).toEqual({ kind: 'none' });
+    expect(resolveNumberCommit('120', 4, 0, 249)).toEqual({ kind: 'commit', value: 120 });
+    expect(resolveNumberCommit('4d', 4, 0, 249)).toEqual({ kind: 'invalid', reason: 'format' });
+    expect(resolveNumberCommit('250', 4, 0, 249)).toEqual({ kind: 'invalid', reason: 'range' });
   });
 
   it('truncates paths in the middle, keeping the file name when possible', () => {

@@ -3,7 +3,7 @@ import { useT } from '../../i18n';
 import { actions, useApp } from '../app';
 import { useMsg } from '../msg';
 import { Icon, type IconName } from '../icons';
-import { Button, IconButton } from '../kit';
+import { Button, IconButton, Swatch } from '../kit';
 
 const FEEDBACK_ICON: Readonly<Record<'ok' | 'error' | 'waiting', IconName>> = {
   ok: 'check',
@@ -14,11 +14,21 @@ const FEEDBACK_ICON: Readonly<Record<'ok' | 'error' | 'waiting', IconName>> = {
 function PendingStart(): ReactElement {
   const t = useT();
   const pending = useApp((s) => s.editor.pendingStart);
+  // The phase W / E will commit is whatever is selected when the key is pressed: show it here.
+  const phase = useApp((s) =>
+    s.selectedPhaseId === null ? undefined : (s.library.phases[s.selectedPhaseId] ?? s.editor.doc.phases[s.selectedPhaseId]),
+  );
   const active = pending !== null;
   return (
     <div className={active ? 'wb-pendingbox wb-pendingbox--active' : 'wb-pendingbox'} data-testid="pending-start">
       <span className="wb-pendingbox-label">{t('mark.pendingStart')}</span>
       <span className="wb-pendingbox-value">{active ? pending : '—'}</span>
+      {active && phase ? (
+        <span className="wb-pendingbox-phase" title={phase.name}>
+          <Swatch color={phase.color} size="sm" />
+          <span className="u-truncate">{phase.name}</span>
+        </span>
+      ) : null}
       <IconButton
         icon="x"
         size="sm"

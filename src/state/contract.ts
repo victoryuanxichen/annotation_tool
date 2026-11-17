@@ -48,8 +48,11 @@ export interface BatchState {
   currentId: string | null;
   scanning: boolean;
   scannedCount: number;
-  /** Background sidecar verification progress. */
-  verifying: { done: number; total: number } | null;
+  /**
+   * Background sidecar verification progress. `current` (0…1) is the hashing progress of the file
+   * being verified now, so a bar can show (done + current) / total while a large file hashes.
+   */
+  verifying: { done: number; total: number; current?: number } | null;
   /** Write access to the source folder(s). 'virtual' = opened without File System Access API. */
   access: 'readwrite' | 'read' | 'needs-permission' | 'none' | 'virtual';
 }
@@ -201,9 +204,10 @@ export interface AppState {
   library: PhaseLibrary;
   selectedPhaseId: string | null;
   /**
-   * Chip order shown directly in the phase panel (max 10). Stable while working on a video:
-   * recomputed from library.recent when a video opens; a newly used phase not shown replaces the
-   * least recent visible chip in place, so other chips never move.
+   * Chip order shown directly in the phase panel (max 10). Stable while working and across video
+   * switches (slots are kept when a video opens; free slots are topped up from library.recent and
+   * the active preset); a newly used phase not shown replaces the least recent visible chip in
+   * place, so other chips never move. Rebuilt from library.recent only by "Clear recent".
    */
   visibleRecent: string[];
   batch: BatchState;
@@ -306,7 +310,8 @@ export interface Actions {
  *   export function getPlayer(): FramePlayer | null;               // src/player FramePlayer
  *   export function usePlayerSnapshot(): PlayerSnapshot;           // re-renders at most once per animation frame
  *   export function getFrameIndex(): FrameIndex | null;            // current video's index (ptsUs, durationUs …)
- *   export function getThumbnail(frame: number): ImageBitmap | null; // scrub preview
+ *   export function getThumbnail(frame: number): { frame: number; bitmap: ImageBitmap } | null;
+ *     // scrub preview: decoded keyframe at or before `frame` (never a later picture) + its frame number
  *
  * Player commands from the UI (play/pause/seek/step/rate) call getPlayer() directly; marking and
  * boundary edits go through actions so the controller can confirm the displayed frame first.

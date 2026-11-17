@@ -5,7 +5,7 @@
  */
 import type { FrameIndex } from '../core/mp4/frameIndex';
 import { BlobByteReader, type ByteReader } from '../core/mp4/byteReader';
-import { indexFile } from '../core/indexClient';
+import { indexFile, warmIndexWorkers } from '../core/indexClient';
 import type { PlayerSnapshot, SeekOutcome, SettledResult } from '../player/types';
 import { FramePlayer } from '../player/FramePlayer';
 import {
@@ -17,6 +17,7 @@ import {
   fingerprint,
   requestPersistence,
   sha256,
+  warmHashWorker,
   type AttachTarget,
   type Sha256Options,
 } from '../storage';
@@ -25,6 +26,7 @@ import {
   ensurePermission,
   handleDrop,
   isSidecarFor,
+  isVideoName,
   pickAnnotationFile,
   pickExportFolder,
   pickFolder,
@@ -39,7 +41,7 @@ import {
   type SidecarRef,
 } from '../fs';
 import { iterateDirectory, isFileHandle } from '../fs/fsApi';
-import { sidecarFormatOf } from '../fs/names';
+import { sidecarFormatOf, stemOf } from '../fs/names';
 import { joinRelPath } from '../fs/types';
 import { detectLang } from '../i18n';
 
@@ -54,6 +56,8 @@ export interface PlayerLike {
   subscribe(fn: (s: PlayerSnapshot) => void): () => void;
   getSnapshot(): PlayerSnapshot;
   peekThumbnail(frame: number): ImageBitmap | null;
+  /** Scrub preview: the decoded keyframe at or before `frame`, with its frame number. */
+  peekPrecedingThumbnail(frame: number): { frame: number; bitmap: ImageBitmap } | null;
 }
 
 export interface FsDeps {
@@ -96,7 +100,7 @@ export interface ControllerDeps<P extends PlayerLike = PlayerLike> {
     fingerprint(file: File): Promise<string>;
     sha256(file: File, options: Sha256Options): Promise<string>;
   };
-  indexFile(file: File): Promise<FrameIndex>;
+  indexFile(file: File, opts?: { priority?: 'foreground' | 'background' }): Promise<FrameIndex>;
   createPlayer(canvas: HTMLCanvasElement): P;
   createReader(file: File): ByteReader;
   fs: FsDeps;
@@ -107,21 +111,36 @@ export interface ControllerDeps<P extends PlayerLike = PlayerLike> {
   now(): number;
 }
 
+/**
+ * Keeps only the candidates that belong to `videoName` under the folder scan's pairing rule: a
+ * sidecar matching several videos of the same folder goes to the one(s) with the longest stem, so
+ * `case_2.phases.csv` belongs to `case_2.mp4`, never to `case.mp4`.
+ */
+export function pairSidecarNames(videoName: string, fileNames: readonly string[]): string[] {
+  const stem = stemOf(videoName);
+  const stems = fileNames.filter(isVideoName).map(stemOf);
+  if (!stems.some((s) => s.toLowerCase() === stem.toLowerCase())) stems.push(stem);
+  return fileNames.filter((name) => {
+    if (sidecarFormatOf(name) === null || !isSidecarFor(stem, name)) return false;
+    return !stems.some((other) => other.length > stem.length && isSidecarFor(other, name));
+  });
+}
+
 async function listSidecars(dir: DirRef, videoName: string): Promise<SidecarRef[]> {
-  const stem = videoName.replace(/\.[^.]*$/, '') || videoName;
   const out: SidecarRef[] = [];
-  const add = (name: string, size: number, lastModified: number, readText: () => Promise<string>): void => {
-    const format = sidecarFormatOf(name);
-    if (!format || !isSidecarFor(stem, name)) return;
-    out.push({ name, relPath: joinRelPath(dir.path, name), format, size, lastModified, readText });
-  };
   if (dir.kind === 'virtual') {
-    for (const [name, file] of dir.node.files) add(name, file.size, file.lastModified, () => file.text());
+    const names = pairSidecarNames(videoName, [...dir.node.files.keys()]);
+    for (const name of names) {
+      const file = dir.node.files.get(name) as File;
+      out.push({ name, relPath: joinRelPath(dir.path, name), format: sidecarFormatOf(name) as 'csv' | 'json', size: file.size, lastModified: file.lastModified, readText: () => file.text() });
+    }
   } else {
-    for await (const child of iterateDirectory(dir.handle)) {
-      if (!isFileHandle(child) || sidecarFormatOf(child.name) === null || !isSidecarFor(stem, child.name)) continue;
-      const file = await child.getFile();
-      add(child.name, file.size, file.lastModified, async () => (await child.getFile()).text());
+    const handles = new Map<string, FileSystemFileHandle>();
+    for await (const child of iterateDirectory(dir.handle)) if (isFileHandle(child)) handles.set(child.name, child);
+    for (const name of pairSidecarNames(videoName, [...handles.keys()])) {
+      const handle = handles.get(name) as FileSystemFileHandle;
+      const file = await handle.getFile();
+      out.push({ name, relPath: joinRelPath(dir.path, name), format: sidecarFormatOf(name) as 'csv' | 'json', size: file.size, lastModified: file.lastModified, readText: async () => (await handle.getFile()).text() });
     }
   }
   return out.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
@@ -145,6 +164,9 @@ export const browserFsDeps: FsDeps = {
 
 /** Real modules: IndexedDB stores, workers, FramePlayer, File System Access API. */
 export function createBrowserDeps(): ControllerDeps<FramePlayer> {
+  // Load the hash worker now rather than on the first video (offline after load, server stopped).
+  warmHashWorker();
+  warmIndexWorkers();
   return {
     drafts: new DraftStore(),
     checkpoints: new CheckpointStore(),

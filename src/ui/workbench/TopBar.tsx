@@ -5,7 +5,7 @@ import { actions, useApp } from '../app';
 import type { Lang } from '../app';
 import { selectCurrentIndex } from '../hooks';
 import { useMsg } from '../msg';
-import { Button, IconButton, MenuButton, SegmentedControl, StatusDot, type MenuEntry } from '../kit';
+import { Button, IconButton, MenuButton, MiddleEllipsis, SegmentedControl, StatusDot, type MenuEntry } from '../kit';
 
 function baseName(path: string): string {
   const i = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
@@ -37,7 +37,7 @@ function SaveState(): ReactElement {
       break;
   }
   return (
-    <span className="wb-state" data-testid="save-state">
+    <span className="wb-state wb-state--save" data-testid="save-state">
       <span className="wb-state-label">{t('save.label')}</span>
       {dot}
       {save.kind === 'error' ? (
@@ -78,8 +78,13 @@ function ExportState(): ReactElement {
       <span className="wb-state-label">{t('exportState.label')}</span>
       {dot}
       {target ? (
-        <span className="wb-state-target u-truncate" title={status.kind === 'exported' ? status.targets.join('\n') : undefined}>
-          → {target}
+        <span className="wb-state-target">
+          <span aria-hidden>→</span>
+          <MiddleEllipsis
+            text={target}
+            title={status.kind === 'exported' ? status.targets.join('\n') : undefined}
+            className="wb-state-target-name"
+          />
         </span>
       ) : null}
     </span>

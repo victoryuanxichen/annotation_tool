@@ -68,7 +68,18 @@ function handle(e: KeyboardEvent): boolean {
     actions.openDialog({ kind: 'help' });
     return true;
   }
-  if (e.shiftKey) return false;
+  if (e.shiftKey) {
+    // Previous / next video (mnemonic with Z / X = first / last frame); goes through the export gate.
+    if (e.code === 'KeyZ') {
+      void actions.prevVideo();
+      return true;
+    }
+    if (e.code === 'KeyX') {
+      void actions.nextVideo();
+      return true;
+    }
+    return false;
+  }
 
   switch (e.code) {
     case 'KeyQ':

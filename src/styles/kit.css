@@ -230,10 +230,13 @@
 }
 
 .ui-chip__key {
+  flex-shrink: 0;
   margin-left: 2px;
   color: var(--c-text-muted);
-  font-family: var(--font-mono);
+  /* Sans: the mono face has no ⇧ glyph and falls back to a tiny one. */
+  font-family: var(--font-sans);
   font-size: var(--fs-11);
+  font-variant-numeric: tabular-nums;
 }
 
 .ui-chip--selected,
@@ -241,7 +244,13 @@
   border-color: var(--c-accent);
   box-shadow: inset 0 0 0 1px var(--c-accent);
   background: color-mix(in srgb, var(--chip-color) 16%, var(--c-panel));
-  font-weight: var(--fw-medium);
+  /* Same font weight as unselected chips, so selecting never changes a chip's width. */
+}
+
+/* Keyboard focus must never look like selection (accent): a neutral dashed ring instead. */
+.ui-chip:focus-visible {
+  outline: 1px dashed var(--c-text-muted);
+  outline-offset: 2px;
 }
 
 .ui-chip--selected .ui-chip__key {

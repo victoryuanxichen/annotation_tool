@@ -6,7 +6,7 @@
 import type { Segment } from '../core/types';
 import { buildExportRecords, defaultSidecarName, serializeCsv, serializeJson } from '../core/formats/export';
 import { parseAnnotationFile } from '../core/formats/import';
-import type { ExportDocument, SidecarFormat } from '../core/formats/types';
+import type { ExportDocument, ParsedAnnotation, SidecarFormat } from '../core/formats/types';
 import { handleDir, joinRelPath, type DirRef, type HandleDirRef } from '../fs/types';
 import { mapWriteError } from '../fs/write';
 import type { ExportTarget } from '../storage';
@@ -29,6 +29,11 @@ export interface ExportJob {
   place: ExportPlace;
   /** Whether permission prompts are allowed (call made from a user gesture). */
   request: boolean;
+  /**
+   * Called before an existing export of the same video is overwritten (e.g. to keep its content as
+   * a checkpoint when it differs); a returned Msg aborts the export with that message.
+   */
+  beforeOverwrite?: (existing: { name: string; label: string; parsed: ParsedAnnotation }) => Promise<Msg | null>;
 }
 
 export type ExportResult = { ok: true; targets: ExportTarget[] } | { ok: false; msg: Msg; canDownload: boolean };
@@ -62,19 +67,22 @@ async function resolveFolder(
   }
 }
 
-/** Refuses to overwrite files that are unreadable as exports or belong to another video. */
-async function checkExisting(fs: FsDeps, dir: DirRef, name: string, sha256: string): Promise<Msg | null> {
+/**
+ * Refuses to overwrite files that are unreadable as exports or belong to another video. Returns the
+ * parsed existing file (same video) when there is one.
+ */
+async function checkExisting(fs: FsDeps, dir: DirRef, name: string, sha256: string): Promise<{ problem: Msg } | { existing: ParsedAnnotation | null }> {
   let text: string | null;
   try {
     text = await fs.readTextIfExists(dir, name);
   } catch {
-    return msg('ctl.export.readFailed', { file: name });
+    return { problem: msg('ctl.export.readFailed', { file: name }) };
   }
-  if (text === null) return null;
+  if (text === null) return { existing: null };
   const parsed = parseAnnotationFile(text, name);
-  if (!parsed.ok) return msg('ctl.export.targetUnparseable', { file: name });
-  if (parsed.file.video.sha256.toLowerCase() !== sha256.toLowerCase()) return msg('ctl.export.targetOtherVideo', { file: name });
-  return null;
+  if (!parsed.ok) return { problem: msg('ctl.export.targetUnparseable', { file: name }) };
+  if (parsed.file.video.sha256.toLowerCase() !== sha256.toLowerCase()) return { problem: msg('ctl.export.targetOtherVideo', { file: name }) };
+  return { existing: parsed.file };
 }
 
 export async function runExport(fs: FsDeps, job: ExportJob): Promise<ExportResult> {
@@ -107,9 +115,17 @@ export async function runExport(fs: FsDeps, job: ExportJob): Promise<ExportResul
     dir = r.dir;
   }
 
+  const existing: { name: string; label: string; parsed: ParsedAnnotation }[] = [];
   for (const f of files) {
-    const problem = await checkExisting(fs, dir, f.name, job.video.sha256);
-    if (problem) return { ok: false, msg: problem, canDownload: true };
+    const r = await checkExisting(fs, dir, f.name, job.video.sha256);
+    if ('problem' in r) return { ok: false, msg: r.problem, canDownload: true };
+    if (r.existing) existing.push({ name: f.name, label: joinRelPath(dir.path, f.name), parsed: r.existing });
+  }
+  if (job.beforeOverwrite) {
+    for (const e of existing) {
+      const problem = await job.beforeOverwrite(e);
+      if (problem) return { ok: false, msg: problem, canDownload: true };
+    }
   }
   const targets: ExportTarget[] = [];
   for (const f of files) {

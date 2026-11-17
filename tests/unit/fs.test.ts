@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { scanFolder, openEntry, mapLimited } from '../../src/fs/scan';
 import { sortEntries } from '../../src/fs/sort';
-import { isSidecarFor, naturalCompare, stemOf } from '../../src/fs/names';
+import { isSidecarFor, naturalCompare, ownsSidecar, sidecarNamesFor, stemOf } from '../../src/fs/names';
 import { writeTextFile, readTextIfExists, ensurePermission, queryPermission } from '../../src/fs/write';
 import { requestSourceFolder, findFileInDir, sameEntry } from '../../src/fs/sourceFolder';
 import { resolveDrop, captureDrop, type DropResult } from '../../src/fs/drop';
@@ -40,6 +40,20 @@ describe('names', () => {
     for (const name of ['case2.csv', 'case.txt', 'case.mp4', 'cas.csv', '.case.csv', 'xcase.csv', 'case']) {
       expect(isSidecarFor('case', name), name).toBe(false);
     }
+  });
+
+  it('gives a sidecar to the video with the longest matching stem', () => {
+    const dir = ['case.mp4', 'case_2.mp4', 'case.v2.mp4', 'case_2.phases.csv', 'case.v2.phases.csv', 'case.phases.csv', 'case_x.json'];
+    expect(sidecarNamesFor('case.mp4', dir)).toEqual(['case.phases.csv', 'case_x.json']);
+    expect(sidecarNamesFor('case_2.mp4', dir)).toEqual(['case_2.phases.csv']);
+    expect(sidecarNamesFor('case.v2.mp4', dir)).toEqual(['case.v2.phases.csv']);
+    // Same rule whether or not the video itself is in the sibling list.
+    expect(ownsSidecar('case.mp4', 'case_2.phases.csv', ['case_2.mp4', 'case_2.phases.csv'])).toBe(false);
+    expect(ownsSidecar('case.mp4', 'case_2.phases.csv', ['case.mp4', 'case_2.phases.csv'])).toBe(true);
+    // Non-video siblings never claim a sidecar.
+    expect(ownsSidecar('case.mp4', 'case_2.phases.csv', ['case_2.txt', 'case_2.csv'])).toBe(true);
+    // Equal stems (case.mp4 + case.m4v) share it.
+    expect(sidecarNamesFor('case.m4v', ['case.mp4', 'case.m4v', 'case.csv'])).toEqual(['case.csv']);
   });
 
   it('compares naturally and case-insensitively', () => {

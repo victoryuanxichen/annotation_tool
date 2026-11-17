@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
-import { formatBytes, formatDateTime, formatNumber, useT } from '../../i18n';
+import { formatBytes, formatDateTime, useT } from '../../i18n';
 import { actions, useApp } from '../app';
 import type { BatchItem, SortDir, SortKey } from '../app';
 import { releaseFocus, selectCurrentIndex, useReleaseAfterPointerPick } from '../hooks';
@@ -9,13 +9,11 @@ import {
   Banner,
   Button,
   EmptyState,
-  MenuButton,
   MiddleEllipsis,
   ProgressBar,
   SegmentedControl,
   Select,
   StatusDot,
-  type MenuEntry,
 } from '../kit';
 
 const ROW_H = 32;
@@ -74,36 +72,43 @@ function BatchNotices(): ReactElement | null {
   return null;
 }
 
-function Progress(): ReactElement | null {
+/** Compact scan / verification progress for the pane header (always the same slot). */
+function Progress(): ReactElement {
   const t = useT();
   const scanning = useApp((s) => s.batch.scanning);
   const scanned = useApp((s) => s.batch.scannedCount);
   const verifying = useApp((s) => s.batch.verifying);
+  let body: ReactElement | null = null;
   if (scanning) {
     const label = t('batch.scanning', { count: scanned });
-    return (
-      <div className="wb-progress">
-        <div className="wb-progress-row">
-          <span>{label}</span>
-        </div>
-        <ProgressBar value={null} label={label} />
-      </div>
+    body = (
+      <>
+        <span className="wb-head-progress-label u-truncate" title={label}>
+          {label}
+        </span>
+        <ProgressBar value={null} label={label} className="wb-head-progress-bar" />
+      </>
     );
-  }
-  if (verifying && verifying.total > 0 && verifying.done < verifying.total) {
+  } else if (verifying && verifying.total > 0 && verifying.done < verifying.total) {
     const label = t('batch.verifying', { done: verifying.done, total: verifying.total });
-    const frac = verifying.done / verifying.total;
-    return (
-      <div className="wb-progress">
-        <div className="wb-progress-row">
-          <span>{label}</span>
-          <span>{formatNumber(frac, { style: 'percent' })}</span>
-        </div>
-        <ProgressBar value={frac} label={label} />
-      </div>
+    // `current` (0…1 of the file being hashed) is optional in the state contract; when present the
+    // bar moves within a file instead of only when a whole file finishes.
+    const cur = 'current' in verifying && typeof verifying.current === 'number' ? Math.min(1, Math.max(0, verifying.current)) : 0;
+    const frac = (verifying.done + cur) / verifying.total;
+    body = (
+      <>
+        <span className="wb-head-progress-label u-truncate" title={label}>
+          {label}
+        </span>
+        <ProgressBar value={frac} label={label} className="wb-head-progress-bar" />
+      </>
     );
   }
-  return null;
+  return (
+    <div className="wb-head-progress" data-testid="batch-progress">
+      {body}
+    </div>
+  );
 }
 
 function Row({
@@ -204,11 +209,6 @@ export function BatchList(): ReactElement {
   const first = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN);
   const last = Math.min(items.length, Math.ceil((scrollTop + viewH) / ROW_H) + OVERSCAN);
 
-  const openItems: MenuEntry[] = [
-    { id: 'file', label: t('topbar.openFile'), icon: 'file', onSelect: () => void actions.openFile() },
-    { id: 'folder', label: t('topbar.openFolder'), icon: 'folder', onSelect: () => void actions.openFolder() },
-  ];
-
   return (
     <section className="wb-pane" aria-label={t('batch.title')}>
       <div className="wb-pane-head">
@@ -216,6 +216,8 @@ export function BatchList(): ReactElement {
         <span className="wb-pane-count" aria-label={t('batch.count', { count: items.length })}>
           {items.length}
         </span>
+        {/* Scan / background-verification progress lives in the header so rows never move. */}
+        <Progress />
         <div className="wb-pane-tools">
           <Select<SortKey>
             size="sm"
@@ -246,11 +248,9 @@ export function BatchList(): ReactElement {
               { value: 'desc', icon: 'chevron-down', ariaLabel: t('batch.sort.desc') },
             ]}
           />
-          <MenuButton items={openItems} label={t('topbar.openMenu')} icon="folder" placement="bottom-end" />
         </div>
       </div>
       <BatchNotices />
-      <Progress />
       {items.length === 0 ? (
         <EmptyState
           message={mode === 'none' ? t('batch.empty') : t('video.empty')}

@@ -289,7 +289,9 @@ export function PresetsDialog({ onClose }: { onClose: () => void }): ReactElemen
                   <span className="wb-presets-check">
                     {p.id === activeId ? <Icon name="check" size={14} title={t('preset.active')} /> : null}
                   </span>
-                  <span className="u-truncate">{presetLabel(p, t)}</span>
+                  <span className="u-truncate" title={presetLabel(p, t)}>
+                    {presetLabel(p, t)}
+                  </span>
                   <span className="wb-presets-count u-tnum">{p.phaseIds.length}</span>
                 </button>
               </li>

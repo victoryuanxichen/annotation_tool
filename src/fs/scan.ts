@@ -1,6 +1,6 @@
 /** Recursive folder scan: finds MP4/M4V videos and their CSV/JSON sidecar candidates. */
 import { iterateDirectory, isDirectoryHandle, isFileHandle } from './fsApi';
-import { comparePaths, isHiddenName, isSidecarFor, isSkippedDirName, isVideoName, sidecarFormatOf, stemOf } from './names';
+import { comparePaths, isHiddenName, isSkippedDirName, isVideoName, ownsSidecar, sidecarFormatOf, stemOf } from './names';
 import { handleDir, joinRelPath, virtualDir, type DirRef, type SidecarFormat, type SidecarRef, type VideoEntry, type VideoSource } from './types';
 
 export { sortEntries, type SortDir, type SortKey } from './sort';
@@ -81,14 +81,10 @@ function listDir(dir: DirRef): Promise<Listing> {
  * to the one(s) with the longest stem, so `case_2.csv` belongs to `case_2.mp4`, not `case.mp4`.
  */
 function pairVideos(dir: DirRef, files: readonly ListedFile[]): PendingVideo[] {
-  const videos = files.filter((f) => isVideoName(f.name)).map((file) => ({ dir, file, sidecars: [] as ListedFile[] }));
-  for (const candidate of files) {
-    if (sidecarFormatOf(candidate.name) === null) continue;
-    const matches = videos.filter((v) => isSidecarFor(stemOf(v.file.name), candidate.name));
-    const longest = Math.max(0, ...matches.map((v) => stemOf(v.file.name).length));
-    for (const v of matches) if (stemOf(v.file.name).length === longest) v.sidecars.push(candidate);
-  }
-  return videos;
+  const names = files.map((f) => f.name);
+  return files
+    .filter((f) => isVideoName(f.name))
+    .map((file) => ({ dir, file, sidecars: files.filter((c) => ownsSidecar(file.name, c.name, names)) }));
 }
 
 async function walk(root: DirRef, opts: ScanOptions): Promise<PendingVideo[]> {

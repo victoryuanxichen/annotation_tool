@@ -37,7 +37,8 @@ export function ZoomControls(): ReactElement {
         aria-label={t('timeline.zoomFit')}
         onClick={() => useTimelineView.getState().fit()}
       >
-        {t('ui.timeline.zoomFactor', { factor: label })}
+        {/* "Fit" rather than "1×", which would read like the playback rate next to it. */}
+        {canOut ? t('ui.timeline.zoomFactor', { factor: label }) : t('ui.timeline.zoomFitted')}
       </button>
       <IconButton icon="zoom-in" label={t('timeline.zoomIn')} disabled={disabled || !canIn} onClick={() => zoom(STEP)} />
     </div>

@@ -35,7 +35,7 @@ export function getFrameIndex(): FrameIndex | null {
   return controller.getFrameIndex();
 }
 
-export function getThumbnail(frame: number): ImageBitmap | null {
+export function getThumbnail(frame: number): { frame: number; bitmap: ImageBitmap } | null {
   return controller.getThumbnail(frame);
 }
 

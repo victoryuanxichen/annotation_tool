@@ -85,6 +85,10 @@ export function fakeIndex(frameCount: number): FrameIndex {
 export class FakePlayer implements PlayerLike {
   status: PlayerSnapshot['status'] = 'empty';
   displayed: number | null = null;
+  /** Pending seek target reported in the snapshot (a seek "in flight"); null when settled. */
+  requested: number | null = null;
+  /** Makes the next seek() resolve as superseded (a later seek replaced it). */
+  supersedeNextSeek = false;
   playing = false;
   frameCount = 0;
   /** Next settled() result override: an error, or 'hang' (never settles → timeout). */
@@ -120,6 +124,10 @@ export class FakePlayer implements PlayerLike {
   async seek(frame: number): Promise<SeekOutcome> {
     this.seeks.push(frame);
     if (this.status !== 'ready') return { ok: false, superseded: false, error: 'not_ready' };
+    if (this.supersedeNextSeek) {
+      this.supersedeNextSeek = false;
+      return { ok: false, superseded: true };
+    }
     this.displayed = Math.max(0, Math.min(this.frameCount - 1, frame));
     return { ok: true, superseded: false, frame: this.displayed };
   }
@@ -142,9 +150,12 @@ export class FakePlayer implements PlayerLike {
     return () => this.listeners.delete(fn);
   }
   getSnapshot(): PlayerSnapshot {
-    return { status: this.status, displayedFrame: this.displayed, requestedFrame: null, playing: this.playing, rate: 1, error: null };
+    return { status: this.status, displayedFrame: this.displayed, requestedFrame: this.requested, playing: this.playing, rate: 1, error: null };
   }
   peekThumbnail(): ImageBitmap | null {
+    return null;
+  }
+  peekPrecedingThumbnail(): { frame: number; bitmap: ImageBitmap } | null {
     return null;
   }
 }

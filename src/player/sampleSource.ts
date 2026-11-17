@@ -1,7 +1,7 @@
 import type { ByteReader } from '../core/mp4/byteReader';
 import type { FrameIndex } from '../core/mp4/frameIndex';
 import { decodeStartFor } from '../core/mp4/frameIndex';
-import { isIdrAccessUnit } from '../core/mp4/avc';
+import { randomAccessKind } from '../core/mp4/avc';
 import { PlayerFailure } from './failure';
 
 const MAX_BATCH_BYTES = 4 * 1024 * 1024;
@@ -9,8 +9,11 @@ const MAX_BATCH_SAMPLES = 512;
 /** Samples separated by more than this many bytes (e.g. interleaved audio) end a batch. */
 const MAX_GAP_BYTES = 64 * 1024;
 
+/** Per-sample random-access verdicts. */
 const IDR_UNKNOWN = 0;
 const IDR_YES = 1;
+/** Open-GOP recovery point (intra picture + recovery point SEI); decodable from here. */
+const IDR_RECOVERY = 2;
 const IDR_NO = -1;
 
 interface ReadWindow {
@@ -22,8 +25,8 @@ interface ReadWindow {
 
 /**
  * Encoded sample access for the decoders. Foreground reads are batched: one `ByteReader.read`
- * covers a run of decode-order samples, which are then served as subarrays. IDR checks are
- * cached per sample.
+ * covers a run of decode-order samples, which are then served as subarrays. Random-access checks
+ * (IDR or open-GOP recovery point) are cached per sample.
  */
 export class SampleSource {
   private readonly idr: Int8Array;
@@ -62,14 +65,31 @@ export class SampleSource {
     return data;
   }
 
-  /** Cached IDR verdict, or undefined when the sample has not been inspected yet. */
-  idrKnown(s: number): boolean | undefined {
+  /**
+   * Cached verdict on whether decoding can start at sample `s` (an IDR or an open-GOP recovery
+   * point), or undefined when the sample has not been inspected yet.
+   */
+  randomAccessKnown(s: number): boolean | undefined {
     const v = this.idr[s];
-    return v === IDR_UNKNOWN ? undefined : v === IDR_YES;
+    return v === IDR_UNKNOWN ? undefined : v === IDR_YES || v === IDR_RECOVERY;
+  }
+
+  /** True when `s` was verified as an open-GOP recovery point (not an IDR). */
+  isRecoveryPoint(s: number): boolean {
+    return this.idr[s] === IDR_RECOVERY;
   }
 
   /**
-   * Same as `decodeStartFor`, with every candidate start sample verified to be an IDR picture.
+   * Called when the decoder rejected a run started at recovery point `s`: decoding never starts
+   * there again, so the next run falls back to an earlier start (ultimately an IDR).
+   */
+  rejectRecoveryPoint(s: number): void {
+    if (this.idr[s] === IDR_RECOVERY) this.idr[s] = IDR_NO;
+  }
+
+  /**
+   * Same as `decodeStartFor`, with every candidate start sample verified to be an IDR picture or
+   * an open-GOP recovery point.
    * A candidate is inspected by reading a foreground window from it towards `horizon`, so the
    * run that follows usually needs no further read.
    */
@@ -88,7 +108,8 @@ export class SampleSource {
 
   private noteIdr(s: number, data: Uint8Array): void {
     if (this.idr[s] === IDR_UNKNOWN) {
-      this.idr[s] = isIdrAccessUnit(data, this.index.nalLengthSize) ? IDR_YES : IDR_NO;
+      const kind = randomAccessKind(data, this.index.nalLengthSize);
+      this.idr[s] = kind === 'idr' ? IDR_YES : kind === 'recovery' ? IDR_RECOVERY : IDR_NO;
     }
   }
 

@@ -1,7 +1,8 @@
 import { isAbortError } from './failure';
 
 /**
- * One decode run: samples fed in decode order starting at a verified IDR sample.
+ * One decode run: samples fed in decode order starting at a verified IDR sample or open-GOP
+ * recovery point.
  * Chunk timestamps are frame numbers, so every output's timestamp is its frame number.
  */
 export interface DecodeRun {
@@ -11,6 +12,8 @@ export interface DecodeRun {
   readonly minFrame: number;
   /** First frame this run was started for (used to detect frames the decoder never produces). */
   readonly goalFirst: number;
+  /** Started at a non-IDR recovery point; a decoder error falls back to an earlier start. */
+  readonly fromRecoveryPoint: boolean;
   nextSample: number;
   /** Highest frame output so far, -1 before the first output. */
   lastOutput: number;
@@ -25,6 +28,8 @@ export interface DecoderSink {
   error(e: unknown): void;
   /** The decoder can take more work (queue shrank, or a reclaimed decoder can be recreated). */
   dequeue(): void;
+  /** The decoder rejected a run started at recovery point `startSample`; never start there again. */
+  recoveryFailed(startSample: number): void;
 }
 
 /**
@@ -56,7 +61,7 @@ export class RunDecoder {
   }
 
   /** Discards all pending work (decoder.reset) and starts a new run at `startSample`. */
-  start(startSample: number, goalFirst: number): DecodeRun {
+  start(startSample: number, goalFirst: number, fromRecoveryPoint = false): DecodeRun {
     if (this.decoder.state === 'closed') this.decoder = this.create();
     else if (this.decoder.state === 'configured') this.decoder.reset();
     this.decoder.configure(this.config);
@@ -66,6 +71,7 @@ export class RunDecoder {
       startSample,
       minFrame: f >= 0 ? f : 0,
       goalFirst,
+      fromRecoveryPoint,
       nextSample: startSample,
       lastOutput: -1,
       goalDelivered: false,
@@ -78,14 +84,22 @@ export class RunDecoder {
   feed(run: DecodeRun, data: Uint8Array): void {
     const s = run.nextSample;
     const f = this.sampleToFrame[s];
-    this.decoder.decode(
-      new EncodedVideoChunk({
-        type: s === run.startSample ? 'key' : 'delta',
-        // Non-presented samples get unique negative timestamps; their outputs are dropped.
-        timestamp: f >= 0 ? f : -(s + 1),
-        data,
-      }),
-    );
+    const chunk = new EncodedVideoChunk({
+      type: s === run.startSample ? 'key' : 'delta',
+      // Non-presented samples get unique negative timestamps; their outputs are dropped.
+      timestamp: f >= 0 ? f : -(s + 1),
+      data,
+    });
+    try {
+      this.decoder.decode(chunk);
+    } catch (e) {
+      // A browser may refuse a non-IDR picture as a key chunk: fall back to an earlier start.
+      if (run.fromRecoveryPoint && this.run === run) {
+        this.abandonRecoveryRun(run);
+        return;
+      }
+      throw e;
+    }
     run.nextSample = s + 1;
   }
 
@@ -118,14 +132,26 @@ export class RunDecoder {
 
   private onError(decoder: VideoDecoder, e: unknown): void {
     if (decoder !== this.decoder || this.disposed) return;
+    const run = this.run;
     this.run = null;
     // Chrome reclaims idle codecs with QuotaExceededError; that is recoverable by starting over.
     if (e instanceof DOMException && e.name === 'QuotaExceededError') {
       this.sink.dequeue();
       return;
     }
+    if (run?.fromRecoveryPoint) {
+      this.abandonRecoveryRun(run);
+      return;
+    }
     this.disposed = true;
     this.sink.error(e);
+  }
+
+  private abandonRecoveryRun(run: DecodeRun): void {
+    if (this.run === run) this.run = null;
+    if (this.decoder.state === 'configured') this.decoder.reset();
+    this.sink.recoveryFailed(run.startSample);
+    this.sink.dequeue();
   }
 
   private onOutput(frame: VideoFrame): void {

@@ -157,6 +157,19 @@ export function parseIntInRange(text: string, min: number, max: number): ParseIn
   return { ok: true, value };
 }
 
+export type NumberCommit = { kind: 'commit'; value: number } | { kind: 'invalid'; reason: 'format' | 'range' } | { kind: 'none' };
+
+/**
+ * What Enter does in a NumberInput. An untouched field (draft null; also a retyped identical
+ * value, which React does not report as a change) confirms the shown value, so callers such as
+ * the jump field still run their commit (and hand focus back to the shortcuts).
+ */
+export function resolveNumberCommit(draft: string | null, value: number | null, min: number, max: number): NumberCommit {
+  if (draft === null) return value === null ? { kind: 'none' } : { kind: 'commit', value };
+  const parsed = parseIntInRange(draft, min, max);
+  return parsed.ok ? { kind: 'commit', value: parsed.value } : { kind: 'invalid', reason: parsed.reason };
+}
+
 /**
  * Integer entry that commits on Enter. Invalid input shows an inline error and keeps focus;
  * Esc reverts (and does not bubble, so global Esc handlers are not triggered).
@@ -185,15 +198,15 @@ export function NumberInput({
   };
 
   const commit = (): void => {
-    if (draft === null) return;
-    const parsed = parseIntInRange(draft, min, max);
-    if (!parsed.ok) {
-      setError(messageFor(parsed.reason));
+    const r = resolveNumberCommit(draft, value, min, max);
+    if (r.kind === 'none') return;
+    if (r.kind === 'invalid') {
+      setError(messageFor(r.reason));
       return;
     }
     setError(null);
     setDraft(null);
-    onCommit(parsed.value);
+    onCommit(r.value);
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>): void => {

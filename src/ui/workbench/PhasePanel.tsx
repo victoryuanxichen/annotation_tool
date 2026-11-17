@@ -11,13 +11,11 @@ import {
 import { useT } from '../../i18n';
 import { actions, useApp } from '../app';
 import type { PhaseDef } from '../../core/types';
-import { useReleaseAfterPointerPick } from '../hooks';
+import { releaseFocus, useReleaseAfterPointerPick } from '../hooks';
 import { useMsg } from '../msg';
 import { Button, Chip, IconButton, Popover, Select, TextInput } from '../kit';
 import { MarkingBlock } from './MarkingBlock';
 import { phaseGroups, presetLabel, slotLabel } from './phaseUtil';
-
-const CHIP_MAX_W = 268;
 
 function usePhaseLookup(): (id: string) => PhaseDef | undefined {
   const lib = useApp((s) => s.library.phases);
@@ -25,29 +23,24 @@ function usePhaseLookup(): (id: string) => PhaseDef | undefined {
   return (id) => lib[id] ?? doc[id];
 }
 
+/** Compact one-line header: label, swatch and name (the ID is in the tooltip). */
 function SelectedPhase(): ReactElement {
   const t = useT();
   const lookup = usePhaseLookup();
   const selectedId = useApp((s) => s.selectedPhaseId);
   const phase = selectedId ? lookup(selectedId) : undefined;
   return (
-    <section className="wb-section" aria-label={t('phase.selected')}>
-      <div className="wb-section-title">{t('phase.selected')}</div>
-      <div className="wb-selected" data-testid="selected-phase">
+    <section className="wb-section wb-selbar" aria-label={t('phase.selected')}>
+      <div className="wb-selected" data-testid="selected-phase" title={phase ? `${phase.name} · ${phase.id}` : undefined}>
+        <span className="wb-selected-label">{t('phase.selected')}</span>
         <span
           className={phase ? 'wb-selected-swatch' : 'wb-selected-swatch wb-selected-swatch--none'}
           style={phase ? ({ '--sel': phase.color } as CSSProperties) : undefined}
           aria-hidden
         />
-        <div className="wb-selected-text">
-          <div
-            className={phase ? 'wb-selected-name u-truncate' : 'wb-selected-name wb-selected-name--none u-truncate'}
-            title={phase?.name}
-          >
-            {phase ? phase.name : t('phase.none')}
-          </div>
-          <div className="wb-selected-id u-truncate">{phase ? phase.id : ' '}</div>
-        </div>
+        <span className={phase ? 'wb-selected-name u-truncate' : 'wb-selected-name wb-selected-name--none u-truncate'}>
+          {phase ? phase.name : t('phase.none')}
+        </span>
       </div>
     </section>
   );
@@ -130,6 +123,7 @@ function PhasePicker({ open, anchorRef, focusForm, onClose }: PhasePickerProps):
   const lib = useApp((s) => s.library);
   const visible = useApp((s) => s.visibleRecent);
   const selectedId = useApp((s) => s.selectedPhaseId);
+  const presetFocus = useReleaseAfterPointerPick();
   const [query, setQuery] = useState('');
   const q = query.trim().toLowerCase();
   const shown = new Set(visible);
@@ -160,6 +154,33 @@ function PhasePicker({ open, anchorRef, focusForm, onClose }: PhasePickerProps):
     >
       <FocusOnMount selector={focusForm ? 'input[data-custom-name]' : 'input[data-filter]'}>
         <div className="wb-picker-head">
+          <div className="wb-preset-row">
+            <Select<string>
+              size="sm"
+              aria-label={t('preset.active')}
+              title={t('preset.active')}
+              value={lib.activePresetId ?? ''}
+              onPointerDown={presetFocus.onPointerDown}
+              onKeyDown={presetFocus.onKeyDown}
+              onChange={(v) => {
+                actions.setActivePreset(v || null);
+                presetFocus.picked();
+              }}
+              options={[
+                { value: '', label: t('ui.phase.presetNone') },
+                ...lib.presets.map((p) => ({ value: p.id, label: presetLabel(p, t) })),
+              ]}
+            />
+            <IconButton
+              icon="edit"
+              size="sm"
+              label={t('phase.manage')}
+              onClick={() => {
+                close();
+                actions.openDialog({ kind: 'presets' });
+              }}
+            />
+          </div>
           <TextInput
             size="sm"
             icon="search"
@@ -183,7 +204,7 @@ function PhasePicker({ open, anchorRef, focusForm, onClose }: PhasePickerProps):
                     label={p.name}
                     title={`${p.name} · ${p.id}`}
                     selected={p.id === selectedId}
-                    maxWidth={CHIP_MAX_W}
+                    maxWidth="100%"
                     onClick={() => {
                       actions.selectPhase(p.id);
                       close();
@@ -221,12 +242,9 @@ function RecentPhases(): ReactElement {
   const visible = useApp((s) => s.visibleRecent);
   const recentCount = useApp((s) => s.library.recent.length);
   const selectedId = useApp((s) => s.selectedPhaseId);
-  const presets = useApp((s) => s.library.presets);
-  const activePresetId = useApp((s) => s.library.activePresetId);
   const moreRef = useRef<HTMLButtonElement>(null);
   const customRef = useRef<HTMLButtonElement>(null);
   const [picker, setPicker] = useState<'more' | 'custom' | null>(null);
-  const presetFocus = useReleaseAfterPointerPick();
   const chips = visible.map((id, i) => ({ phase: lookup(id), slot: i + 1 })).filter((c) => c.phase !== undefined);
 
   return (
@@ -239,7 +257,7 @@ function RecentPhases(): ReactElement {
       </div>
       <div className="wb-recent-list">
         {chips.length > 0 ? (
-          <div className="wb-chips" data-testid="recent-chips">
+          <div className="wb-chips wb-chips--recent" data-testid="recent-chips">
             {chips.map(({ phase, slot }) =>
               phase ? (
                 <Chip
@@ -249,9 +267,14 @@ function RecentPhases(): ReactElement {
                   title={`${phase.name} · ${phase.id}`}
                   selected={phase.id === selectedId}
                   shortcut={slotLabel(slot)}
-                  maxWidth={CHIP_MAX_W}
+                  maxWidth="100%"
                   aria-keyshortcuts={slot <= 5 ? String(slot) : `Shift+${slot - 5}`}
-                  onClick={() => actions.selectPhase(phase.id)}
+                  onClick={(e) => {
+                    actions.selectPhase(phase.id);
+                    // A pointer pick hands the keyboard back to the shortcuts, so the chip does not
+                    // keep a focus ring next to the selected one when 1–5 / D / Q follow.
+                    if (e.detail > 0) releaseFocus();
+                  }}
                 />
               ) : null,
             )}
@@ -261,49 +284,28 @@ function RecentPhases(): ReactElement {
         )}
       </div>
       <div className="wb-recent-foot">
-        <div className="wb-chip-row">
-          <Button
-            ref={moreRef}
-            size="sm"
-            variant="ghost"
-            iconEnd="chevron-down"
-            aria-expanded={picker === 'more'}
-            aria-haspopup="dialog"
-            onClick={() => setPicker((p) => (p === 'more' ? null : 'more'))}
-          >
-            {t('phase.more')}
-          </Button>
-          <Button
-            ref={customRef}
-            size="sm"
-            variant="ghost"
-            icon="plus"
-            aria-expanded={picker === 'custom'}
-            aria-haspopup="dialog"
-            onClick={() => setPicker((p) => (p === 'custom' ? null : 'custom'))}
-          >
-            {t('phase.addCustom')}
-          </Button>
-        </div>
-        <div className="wb-preset-row">
-          <Select<string>
-            size="sm"
-            aria-label={t('preset.active')}
-            title={t('preset.active')}
-            value={activePresetId ?? ''}
-            onPointerDown={presetFocus.onPointerDown}
-            onKeyDown={presetFocus.onKeyDown}
-            onChange={(v) => {
-              actions.setActivePreset(v || null);
-              presetFocus.picked();
-            }}
-            options={[
-              { value: '', label: t('ui.phase.presetNone') },
-              ...presets.map((p) => ({ value: p.id, label: presetLabel(p, t) })),
-            ]}
-          />
-          <IconButton icon="edit" size="sm" label={t('phase.manage')} onClick={() => actions.openDialog({ kind: 'presets' })} />
-        </div>
+        <Button
+          ref={moreRef}
+          size="sm"
+          variant="ghost"
+          iconEnd="chevron-down"
+          aria-expanded={picker === 'more'}
+          aria-haspopup="dialog"
+          onClick={() => setPicker((p) => (p === 'more' ? null : 'more'))}
+        >
+          {t('phase.more')}
+        </Button>
+        <Button
+          ref={customRef}
+          size="sm"
+          variant="ghost"
+          icon="plus"
+          aria-expanded={picker === 'custom'}
+          aria-haspopup="dialog"
+          onClick={() => setPicker((p) => (p === 'custom' ? null : 'custom'))}
+        >
+          {t('phase.addCustom')}
+        </Button>
       </div>
       <PhasePicker
         open={picker !== null}
@@ -315,7 +317,7 @@ function RecentPhases(): ReactElement {
   );
 }
 
-/** Side panel: selected phase, recent chips, more phases, presets, and the marking block. */
+/** Side panel: selected phase, recent chips, more phases (with the preset selector), and the pinned marking block. */
 export function PhasePanel(): ReactElement {
   const t = useT();
   return (

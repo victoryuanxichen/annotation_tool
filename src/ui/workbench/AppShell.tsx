@@ -17,8 +17,14 @@ import { WorkPane } from './WorkPane';
 import './workbench.css';
 
 const BOTTOM_MIN = 140;
-/** Space kept for the top bar, file bar, a usable video, transport and timeline, and enough side-panel height for several phase chips above the pinned marking block. */
-const TOP_RESERVED = 540;
+/**
+ * Side-panel height that shows all ten recent chips (one per row in the worst case) between the
+ * compact selected-phase bar and the pinned marking block (budget in workbench.css). The video
+ * column needs less than this, so it also bounds the video area.
+ */
+const SIDE_MIN = 566;
+/** Top bar (40) + splitter hairline (1) + SIDE_MIN: the bottom panel never grows into it. */
+const TOP_RESERVED = 40 + 1 + SIDE_MIN;
 
 function useWindowHeight(): number {
   const [h, setH] = useState(() => window.innerHeight);

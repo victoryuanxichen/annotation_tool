@@ -5,7 +5,7 @@ import { actions, useApp } from '../app';
 import type { VideoState } from '../app';
 import { selectCurrentIndex } from '../hooks';
 import { useMsg, type TranslateMsg } from '../msg';
-import { Button, MiddleEllipsis, StatusDot, type StatusTone } from '../kit';
+import { Button, MiddleEllipsis, StatusDot, formatShortcut, type StatusTone } from '../kit';
 
 interface StatusView {
   tone: StatusTone;
@@ -78,7 +78,8 @@ export function VideoHeader(): ReactElement {
         icon="chevron-left"
         variant="ghost"
         aria-label={t('video.prevLabel')}
-        title={t('video.prevLabel')}
+        aria-keyshortcuts="Shift+Z"
+        title={`${t('video.prevLabel')} (${formatShortcut('Shift+Z')})`}
         disabled={!hasPrev}
         onClick={() => void actions.prevVideo()}
       >
@@ -101,7 +102,8 @@ export function VideoHeader(): ReactElement {
         iconEnd="chevron-right"
         variant="ghost"
         aria-label={t('video.nextLabel')}
-        title={t('video.nextLabel')}
+        aria-keyshortcuts="Shift+X"
+        title={`${t('video.nextLabel')} (${formatShortcut('Shift+X')})`}
         disabled={!hasNext}
         onClick={() => void actions.nextVideo()}
       >

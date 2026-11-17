@@ -43,6 +43,28 @@ export function isSidecarFor(stem: string, fileName: string): boolean {
   return SIDECAR_STEM_SEPARATORS.has(fileName[stem.length]);
 }
 
+/**
+ * True when `fileName` is a sidecar of video `videoName` in a folder whose files are `siblings`
+ * (the names of all files in that folder; `videoName` may or may not be among them). A candidate
+ * that several videos match belongs to the one(s) with the longest stem, so `case_2.csv` and
+ * `case.v2.phases.csv` belong to `case_2.mp4` / `case.v2.mp4`, not to `case.mp4`.
+ */
+export function ownsSidecar(videoName: string, fileName: string, siblings: Iterable<string>): boolean {
+  const stem = stemOf(videoName);
+  if (!isSidecarFor(stem, fileName)) return false;
+  for (const other of siblings) {
+    if (other === videoName || !isVideoName(other)) continue;
+    const otherStem = stemOf(other);
+    if (otherStem.length > stem.length && isSidecarFor(otherStem, fileName)) return false;
+  }
+  return true;
+}
+
+/** The sidecars of `videoName` among `fileNames` (all files of its folder), by `ownsSidecar`. */
+export function sidecarNamesFor(videoName: string, fileNames: readonly string[]): string[] {
+  return fileNames.filter((n) => ownsSidecar(videoName, n, fileNames));
+}
+
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
 /** Case-insensitive, numeric-aware comparison (`case2` < `case10`), with a deterministic tiebreak. */

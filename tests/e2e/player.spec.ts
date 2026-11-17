@@ -342,6 +342,31 @@ test.describe('player extras', () => {
     }
   });
 
+  test('scrub preview thumbnail is the last keyframe at or before the hovered frame', async ({ page }) => {
+    const info = await openPlayer(page, 'cfr25_bframes');
+    await page.waitForFunction((k) => window.__player.getStats().thumbnails >= k, info.keyframes.length);
+    for (const f of [0, 1, 37, 60, 124, 200, info.frameCount - 1]) {
+      const got = await page.evaluate((f) => window.__player.peekPrecedingThumbnail(f)?.frame ?? null, f);
+      const expected = info.keyframes.filter((k) => k <= f).pop() ?? null;
+      expect(got, `frame ${f}`).toBe(expected);
+    }
+  });
+
+  test('open-GOP seek starts at a recovery point, not the first IDR', async ({ page }) => {
+    const info = await openPlayer(page, 'open_gop30');
+    const last = info.frameCount - 1;
+    const r = await page.evaluate(async (last) => {
+      const p = window.__player;
+      await p.settled(5000);
+      const before = p.getStats().samplesFed;
+      const outcome = await p.seek(last);
+      return { outcome, fed: p.getStats().samplesFed - before, barcode: window.__readBarcode() };
+    }, last);
+    expect(r.outcome).toEqual({ ok: true, superseded: false, frame: last });
+    expect(r.barcode).toBe(last);
+    expect(r.fed).toBeLessThan(260);
+  });
+
   test('missing WebCodecs reports webcodecs_missing', async ({ page }) => {
     await openPlayer(page, 'tiny3', '&nowebcodecs=1');
     const snap = await page.evaluate(() => window.__player.getSnapshot());

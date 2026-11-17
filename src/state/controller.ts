@@ -56,7 +56,7 @@ import type {
   SwitchFailure,
   Toast,
 } from './contract';
-import type { ControllerDeps, PlayerLike } from './deps';
+import type { ControllerDeps, FsDeps, PlayerLike } from './deps';
 import { formatsFor, runExport, type ExportPlace } from './exporter';
 import { History, type EditorSnapshot } from './history';
 import { createInitialState, DEFAULT_APP_SETTINGS, emptyBatch, emptyEditor, emptyVideo } from './initialState';
@@ -70,15 +70,24 @@ import {
   parseErrorMsg,
   verifyProblemMsg,
 } from './messages';
-import { initialVisibleRecent, showInVisibleRecent } from './recent';
+import { initialVisibleRecent, MAX_VISIBLE_RECENT, showInVisibleRecent } from './recent';
 
 export const LAST_FOLDER_HANDLE_ID = 'last-folder';
 export const EXPORT_FOLDER_HANDLE_ID = 'export-folder';
 const RECENT_LIMIT = 50;
 const DEFAULT_SETTLE_TIMEOUT_MS = 1500;
 
-/** Drafts written by this controller carry `touched` (absent on older records = touched). */
-export type StoredDraft = DraftRecord & { touched?: boolean };
+/** The sha256 draft a provisional (pending-key) draft continues, and the revision it started from. */
+interface DraftBase {
+  sha256: string;
+  revision: number;
+}
+
+/**
+ * Drafts written by this controller carry `touched` (absent on older records = touched). A
+ * pending-key draft that continues a sha256 draft adopted by fingerprint records it in `basedOn`.
+ */
+export type StoredDraft = DraftRecord & { touched?: boolean; basedOn?: DraftBase };
 
 interface ItemRecord {
   id: string;
@@ -86,6 +95,8 @@ interface ItemRecord {
   source: VideoSource | null;
   sha256: string | null;
   draft: StoredDraft | null;
+  /** `draft` was found by fingerprint only (identity not verified). */
+  draftByFingerprint: boolean;
   sidecarResult: 'match' | 'mismatch' | 'invalid' | null;
   sidecarDetail: Msg | null;
   matchedSegments: number | null;
@@ -124,7 +135,14 @@ interface Video {
   meta: StoredDraft;
   doc: AnnotationDoc;
   touched: boolean;
-  /** Saves are held back while the draft identity is provisional or being promoted. */
+  /** The user changed the annotations since this video was opened (not just loaded/exported). */
+  edited: boolean;
+  /**
+   * Set while the open doc continues a sha256 draft found by fingerprint whose identity is not yet
+   * verified. Saves meanwhile go to this file's pending key and are promoted after the hash.
+   */
+  provisional: DraftBase | null;
+  /** Saves are held back only while the draft is being promoted to its sha256 key. */
   deferSaves: boolean;
   saveWanted: boolean;
   history: History;
@@ -135,6 +153,15 @@ interface Video {
   exporting: boolean;
   exportError: Msg | null;
   lifecycle: Promise<void>;
+}
+
+/** Player state captured synchronously when a mark key is pressed. */
+interface MarkIntent {
+  player: PlayerLike;
+  playing: boolean;
+  displayed: number | null;
+  /** The frame the key commits: the pending seek target, else the displayed frame. */
+  frame: number | null;
 }
 
 interface PendingSwitch {
@@ -153,7 +180,8 @@ export interface ControllerApi<P extends PlayerLike> {
   getFrameIndex(): FrameIndex | null;
   /** The canvas the player renders into (last attached). */
   getCanvas(): HTMLCanvasElement | null;
-  getThumbnail(frame: number): ImageBitmap | null;
+  /** Scrub preview: the decoded keyframe at or before `frame` and its frame number. */
+  getThumbnail(frame: number): { frame: number; bitmap: ImageBitmap } | null;
   /** Test/e2e helpers (see src/state/testHook.ts). */
   openDirectoryHandle(handle: FileSystemDirectoryHandle): Promise<void>;
   openFileHandle(handle: FileSystemFileHandle, parent?: FileSystemDirectoryHandle): Promise<void>;
@@ -163,6 +191,11 @@ export interface ControllerApi<P extends PlayerLike> {
   flushAutosave(): Promise<void>;
   /** Resolves when the open video's identity/sidecar work and batch verification are finished. */
   whenIdle(): Promise<void>;
+  /**
+   * Test hook support: replaces the given file-system functions (merged over the real ones; an
+   * empty object restores them all). Used by src/state/testHook.ts only.
+   */
+  setFsOverrides(overrides: Partial<FsDeps>): void;
   dispose(): void;
 }
 
@@ -170,6 +203,17 @@ export interface ControllerApi<P extends PlayerLike> {
 function visibleFor(lib: PhaseLibrary): string[] {
   const preset = lib.presets.find((p) => p.id === lib.activePresetId);
   return initialVisibleRecent(lib.recent, (id) => id in lib.phases, preset?.phaseIds ?? []);
+}
+
+/**
+ * Chips when another video opens: the slots (and so the 1–5 / Shift+1–5 keys) stay where they are
+ * across videos; deleted phases drop out and free slots are topped up as on first use.
+ */
+function keepChipSlots(current: readonly string[], lib: PhaseLibrary): string[] {
+  const kept = current.filter((id) => id in lib.phases);
+  if (kept.length === 0) return visibleFor(lib);
+  const extra = visibleFor(lib).filter((id) => !kept.includes(id));
+  return [...kept, ...extra].slice(0, MAX_VISIBLE_RECENT);
 }
 
 function phaseExistsIn(doc: AnnotationDoc, lib: PhaseLibrary): (id: string) => boolean {
@@ -228,16 +272,21 @@ class Controller<P extends PlayerLike> {
   private rememberedFolder: FileSystemDirectoryHandle | null = null;
   private pendingSwitch: PendingSwitch | null = null;
   private switching = false;
-  /** Draft keys / item ids of videos left this session with unexported changes. */
-  private readonly unexported = new Set<string>();
+  /** Draft key → item (and batch generation) of videos left this session with unexported changes. */
+  private readonly unexported = new Map<string, { itemId: string; gen: number }>();
   private toastSeq = 0;
   private feedbackSeq = 0;
   private libraryChain: Promise<void> = Promise.resolve();
   private settingsChain: Promise<void> = Promise.resolve();
+  /** Marking and boundary edits, serialised (see `serialMark`). */
+  private markChain: Promise<void> = Promise.resolve();
   private initStarted = false;
   private readonly cleanups: (() => void)[] = [];
 
+  private readonly baseFs: FsDeps;
+
   constructor(private readonly deps: ControllerDeps<P>) {
+    this.baseFs = deps.fs;
     this.settleTimeout = deps.settleTimeoutMs ?? DEFAULT_SETTLE_TIMEOUT_MS;
     this.autosaver = new Autosaver({
       store: deps.drafts,
@@ -424,7 +473,7 @@ class Controller<P extends PlayerLike> {
   // ================================================================ batch
 
   private makeItemRecord(id: string, entry: VideoEntry | null, source: VideoSource | null): ItemRecord {
-    return { id, entry, source, sha256: null, draft: null, sidecarResult: null, sidecarDetail: null, matchedSegments: null, loadError: null };
+    return { id, entry, source, sha256: null, draft: null, draftByFingerprint: false, sidecarResult: null, sidecarDetail: null, matchedSegments: null, loadError: null };
   }
 
   private baseItem(rec: ItemRecord): BatchItem {
@@ -488,6 +537,8 @@ class Controller<P extends PlayerLike> {
   private applyRecordStatus(rec: ItemRecord): void {
     if (this.video?.itemId === rec.id) return;
     this.updateItem(rec.id, { ...this.recordStatus(rec), sha256: rec.sha256 });
+    const count = this.unexportedCount();
+    if (count !== this.s.unexportedCount) this.set({ unexportedCount: count });
   }
 
   private applyVideoStatus(cv: Video): void {
@@ -562,9 +613,13 @@ class Controller<P extends PlayerLike> {
     await this.openVideo(id);
   }
 
-  /** One at a time, background priority: drafts via the hash cache, then sidecar verification. */
+  /**
+   * One at a time, background priority: local drafts (hash cache, else the cheap fingerprint, so
+   * videos never hashed in this browser still show their drafts), then sidecar verification.
+   */
   private async verifyBatch(gen: number, signal: AbortSignal): Promise<void> {
     const live = (): boolean => gen === this.batchGen && !signal.aborted;
+    const misses: ItemRecord[] = [];
     for (const rec of this.items.values()) {
       if (!live()) return;
       const e = rec.entry;
@@ -574,13 +629,34 @@ class Controller<P extends PlayerLike> {
       if (sha) {
         rec.sha256 = sha;
         rec.draft = ((await this.deps.drafts.get(sha).catch(() => null)) as StoredDraft | null) ?? null;
-      }
+      } else misses.push(rec);
       this.applyRecordStatus(rec);
+    }
+    for (const rec of misses) {
+      // Let the video being opened index and look up its own draft first.
+      while (live() && (this.s.video.loadPhase === 'indexing' || this.s.video.loadPhase === 'loading')) await sleep(100);
+      if (!live()) return;
+      if (this.video?.itemId === rec.id || rec.draft) continue;
+      const e = rec.entry as VideoEntry;
+      try {
+        const file = e.file ?? (await (e.fileHandle as FileSystemFileHandle).getFile());
+        const fp = await this.deps.hashing.fingerprint(file);
+        if (!live()) return;
+        const found = await this.deps.drafts.findForVideo({ fingerprint: fp });
+        if (!live()) return;
+        if (found && !rec.draft) {
+          rec.draft = found.record as StoredDraft;
+          rec.draftByFingerprint = true;
+          this.applyRecordStatus(rec);
+        }
+      } catch {
+        // Unreadable here; opening the video reports the problem.
+      }
     }
     const todo = [...this.items.values()].filter((r) => this.sidecarCount(r) > 0);
     if (todo.length === 0) return;
     let done = 0;
-    this.set({ batch: { ...this.s.batch, verifying: { done, total: todo.length } } });
+    this.set({ batch: { ...this.s.batch, verifying: { done, total: todo.length, current: 0 } } });
     for (const rec of todo) {
       if (!live()) return;
       await this.foregroundIdle(live);
@@ -588,7 +664,7 @@ class Controller<P extends PlayerLike> {
       if (this.video?.itemId !== rec.id && rec.sidecarResult === null) await this.verifyItem(rec, signal).catch(() => undefined);
       if (!live()) return;
       done++;
-      this.set({ batch: { ...this.s.batch, verifying: done < todo.length ? { done, total: todo.length } : null } });
+      this.set({ batch: { ...this.s.batch, verifying: done < todo.length ? { done, total: todo.length, current: 0 } : null } });
     }
   }
 
@@ -605,12 +681,24 @@ class Controller<P extends PlayerLike> {
   private async verifyItem(rec: ItemRecord, signal: AbortSignal): Promise<void> {
     const e = rec.entry as VideoEntry;
     const file = e.file ?? (await (e.fileHandle as FileSystemFileHandle).getFile());
-    const sha = rec.sha256 ?? (await this.deps.hashing.sha256(file, { priority: 'background', relPath: e.relPath, signal }));
+    let lastPct = -1;
+    const onProgress = (done: number, total: number): void => {
+      const v = this.s.batch.verifying;
+      const pct = total > 0 ? Math.floor((done / total) * 100) : 0;
+      if (!v || pct === lastPct || signal.aborted) return;
+      lastPct = pct;
+      this.set({ batch: { ...this.s.batch, verifying: { ...v, current: pct / 100 } } });
+    };
+    const sha = rec.sha256 ?? (await this.deps.hashing.sha256(file, { priority: 'background', relPath: e.relPath, signal, onProgress }));
     rec.sha256 = sha;
-    if (!rec.draft) rec.draft = ((await this.deps.drafts.get(sha).catch(() => null)) as StoredDraft | null) ?? null;
+    if (!rec.draft || (rec.draftByFingerprint && rec.draft.sha256 !== null && rec.draft.sha256 !== sha)) {
+      // A fingerprint match is only a hint; the verified hash decides which draft is this video's.
+      rec.draft = ((await this.deps.drafts.get(sha).catch(() => null)) as StoredDraft | null) ?? null;
+      rec.draftByFingerprint = false;
+    }
     let index: FrameIndex;
     try {
-      index = await this.deps.indexFile(file);
+      index = await this.deps.indexFile(file, { priority: 'background' });
     } catch (err) {
       rec.loadError = msg('ctl.video.indexFailed', { file: e.name, code: errorCode(err) });
       this.applyRecordStatus(rec);
@@ -636,10 +724,26 @@ class Controller<P extends PlayerLike> {
     return cv.touched && cv.meta.exported?.contentHash !== computeContentHash(cv.doc.segments, cv.doc.phases);
   }
 
+  private markUnexported(cv: Video): void {
+    this.unexported.set(cv.meta.key, { itemId: cv.itemId, gen: this.batchGen });
+  }
+
+  /**
+   * Videos with changes that were never exported: the open one, the ones left this session, and
+   * batch items whose local draft (from an earlier session too) is unexported.
+   */
   private unexportedCount(): number {
     const cv = this.video;
-    const current = cv && this.isDirty(cv) && !this.unexported.has(cv.meta.key) ? 1 : 0;
-    return this.unexported.size + current;
+    const counted = new Set<string>();
+    for (const it of this.s.batch.items) if (it.status === 'draft' && it.id !== cv?.itemId) counted.add(it.id);
+    let n = counted.size;
+    for (const [key, at] of this.unexported) {
+      if (cv && key === cv.meta.key) continue;
+      if (at.gen === this.batchGen && (counted.has(at.itemId) || at.itemId === cv?.itemId)) continue;
+      n++;
+    }
+    if (cv && this.isDirty(cv)) n++;
+    return n;
   }
 
   /**
@@ -684,12 +788,27 @@ class Controller<P extends PlayerLike> {
     }
     await this.autosaver.flush();
     if (this.video !== cv) return;
+    let storedDraft: StoredDraft | null | undefined;
+    if (this.autosaver.isBlocked(cv.meta.key)) {
+      // Leaving with an unresolved "changed in another tab" conflict: the newer stored revision
+      // stays the draft, this tab's version is kept as a checkpoint, and autosave is unblocked so
+      // the next video saves normally.
+      const key = cv.meta.key;
+      await this.tryCheckpoint({ videoKey: key, name: t('ctl.checkpoint.mineBeforeNewer'), kind: 'auto-before-conflict', segments: cv.doc.segments, phases: cv.doc.phases });
+      if (this.video !== cv) return;
+      this.autosaver.discardPending();
+      this.autosaver.clearConflict(key);
+      cv.saveWanted = false;
+      storedDraft = ((await this.deps.drafts.get(key).catch(() => null)) as StoredDraft | null) ?? null;
+      if (this.video !== cv) return;
+    }
     cv.abort.abort();
-    if (this.isDirty(cv)) this.unexported.add(cv.meta.key);
+    if (storedDraft === undefined && this.isDirty(cv)) this.markUnexported(cv);
     const rec = this.items.get(cv.itemId);
     if (rec) {
       rec.sha256 = cv.sha256 ?? rec.sha256;
-      rec.draft = cv.touched ? this.buildDraft(cv) : rec.draft;
+      rec.draft = storedDraft !== undefined ? storedDraft : cv.touched ? this.buildDraft(cv) : rec.draft;
+      rec.draftByFingerprint = false;
       if (cv.loadFailed) rec.loadError = this.s.video.error;
       const match = cv.sidecars.find((c) => c.status.state === 'match');
       if (match) {
@@ -712,9 +831,9 @@ class Controller<P extends PlayerLike> {
       stale: null,
       markFeedback: null,
       dialog: this.s.dialog?.kind === 'switch-failed' || this.s.dialog?.kind === 'import-choice' ? null : this.s.dialog,
-      unexportedCount: this.unexported.size,
       batch: { ...this.s.batch, currentId: null },
     });
+    this.set({ unexportedCount: this.unexportedCount() });
   }
 
   // ================================================================ video lifecycle
@@ -737,7 +856,7 @@ class Controller<P extends PlayerLike> {
       stale: null,
       save: { kind: 'idle' },
       markFeedback: null,
-      visibleRecent: visibleFor(lib),
+      visibleRecent: keepChipSlots(this.s.visibleRecent, lib),
     });
 
     let source: VideoSource;
@@ -768,6 +887,8 @@ class Controller<P extends PlayerLike> {
       meta: newDraft({ sha256: null, fingerprint: '', fileName: source.name, relPath, frameCount: 0, durationUs: 0 }),
       doc: { segments: [], phases: {} },
       touched: false,
+      edited: false,
+      provisional: null,
       deferSaves: true,
       saveWanted: false,
       history: new History(),
@@ -899,12 +1020,74 @@ class Controller<P extends PlayerLike> {
     const found = await this.deps.drafts.findForVideo({ fingerprint: fp }).catch(() => null);
     if (this.video !== cv) return;
     if (found) {
-      this.adoptDraft(cv, found.record as StoredDraft);
-      // A draft keyed by a known sha256 may belong to another video until our own hash confirms it.
-      if (found.record.sha256 !== null) cv.deferSaves = true;
+      const record = found.record as StoredDraft;
+      this.adoptDraft(cv, record);
+      if (record.sha256 !== null) {
+        // A draft keyed by a known sha256 may belong to another video until our own hash confirms
+        // it. Edits made meanwhile are autosaved under this file's pending key right away (never
+        // held only in memory) and promoted onto the sha256 draft once the hash matches.
+        await this.useProvisionalKey(cv, { sha256: record.sha256, revision: record.revision });
+        if (this.video !== cv) return;
+      } else if (record.basedOn) {
+        cv.provisional = record.basedOn;
+      }
       this.set({ video: { ...this.s.video, identity: 'provisional' } });
     }
     await this.refreshCheckpoints(cv);
+  }
+
+  private async useProvisionalKey(cv: Video, base: DraftBase): Promise<void> {
+    const pk = pendingKey(cv.fingerprint ?? '');
+    const stored = ((await this.deps.drafts.get(pk).catch(() => null)) as StoredDraft | null) ?? null;
+    if (this.video !== cv) return;
+    if (stored?.basedOn && stored.basedOn.sha256 === base.sha256 && stored.basedOn.revision === base.revision) {
+      // Unpromoted edits of an earlier session (e.g. a crash during hashing) continue this very
+      // revision: they are the newest state.
+      this.adoptDraft(cv, stored);
+      cv.provisional = stored.basedOn;
+      return;
+    }
+    if (stored && stored.contentHash !== cv.meta.contentHash) {
+      // An older unverified draft of this file is about to be replaced: keep it as a checkpoint.
+      await this.tryCheckpoint({ videoKey: pk, name: t('ctl.checkpoint.otherDraft', { file: stored.fileName }), kind: 'auto-before-conflict', segments: stored.segments, phases: stored.phases });
+      if (this.video !== cv) return;
+    }
+    cv.provisional = base;
+    cv.meta = { ...cv.meta, key: pk, sha256: null, revision: stored?.revision ?? 0 };
+    this.autosaver.rebase(pk, cv.meta.revision);
+  }
+
+  /** Creates a safety checkpoint; false (with an error toast) when it could not be stored. */
+  private async tryCheckpoint(input: Parameters<ControllerDeps['checkpoints']['create']>[0]): Promise<boolean> {
+    try {
+      await this.deps.checkpoints.create(input);
+      return true;
+    } catch (e) {
+      this.toast('error', msg('ctl.checkpoint.failed', { message: errorText(e) }));
+      return false;
+    }
+  }
+
+  /** Writes the open draft now (outside the debounce); false on failure or conflict. */
+  private async saveNow(cv: Video): Promise<boolean> {
+    let r: Awaited<ReturnType<ControllerDeps['drafts']['save']>>;
+    try {
+      r = await this.deps.drafts.save(this.buildDraft(cv), cv.meta.revision);
+    } catch (e) {
+      cv.saveWanted = true;
+      if (this.video === cv) this.set({ save: { kind: 'error', msg: msg('save.failedDetail', { reason: errorText(e) }) } });
+      return false;
+    }
+    if (!r.ok) {
+      cv.saveWanted = true;
+      return false;
+    }
+    cv.meta = { ...cv.meta, revision: r.record.revision, savedAt: r.record.savedAt };
+    this.autosaver.rebase(r.record.key, r.record.revision);
+    const rec = this.items.get(cv.itemId);
+    if (rec) rec.draft = r.record as StoredDraft;
+    if (this.video === cv) this.set({ save: { kind: 'saved', at: r.record.savedAt } });
+    return true;
   }
 
   private adoptDraft(cv: Video, record: StoredDraft): void {
@@ -923,24 +1106,14 @@ class Controller<P extends PlayerLike> {
     if (this.video !== cv || sha === null) return;
     this.applyVideoStatus(cv);
     const fp = cv.fingerprint ?? '';
-    const { drafts } = this.deps;
 
-    if (cv.meta.sha256 !== null && cv.meta.sha256 !== sha) {
+    if ((cv.provisional && cv.provisional.sha256 !== sha) || (cv.meta.sha256 !== null && cv.meta.sha256 !== sha)) {
       // The fingerprint matched a draft of a different video: drop that association.
-      const bySha = await drafts.findForVideo({ sha256: sha, fingerprint: fp }).catch(() => null);
+      cv.deferSaves = true;
+      await this.autosaver.flush();
       if (this.video !== cv) return;
-      const index = cv.index as FrameIndex;
-      const fresh = newDraft({ sha256: sha, fingerprint: fp, fileName: cv.name, relPath: cv.relPath, frameCount: index.frameCount, durationUs: index.durationUs });
-      if (bySha?.match === 'sha256' && !cv.touched) {
-        this.adoptDraft(cv, bySha.record as StoredDraft);
-      } else {
-        cv.meta = { ...fresh, revision: bySha?.match === 'sha256' ? bySha.record.revision : 0 };
-        if (!cv.touched) {
-          cv.doc = { segments: [], phases: {} };
-          cv.history.clear();
-        }
-      }
-      this.toast('warning', msg('ctl.video.provisionalMismatch'));
+      await this.dropForeignDraft(cv, sha, fp);
+      if (this.video !== cv) return;
     } else if (cv.meta.sha256 === null) {
       cv.deferSaves = true;
       await this.autosaver.flush();
@@ -956,9 +1129,47 @@ class Controller<P extends PlayerLike> {
     await this.verifySidecars(cv);
   }
 
+  /**
+   * The fingerprint adopted another video's draft. Its annotations are never carried into this
+   * video's draft or export: edits made on top of them are kept as a checkpoint, then this video's
+   * own sha256 draft (if any) is loaded.
+   */
+  private async dropForeignDraft(cv: Video, sha: string, fp: string): Promise<void> {
+    const { drafts, checkpoints } = this.deps;
+    const pk = cv.meta.key;
+    cv.provisional = null;
+    // Work stored under the pending key (this session's edits, or an earlier session's).
+    const ownWork = cv.edited || (cv.meta.sha256 === null && cv.meta.revision > 0 && cv.touched);
+    let keepPending = false;
+    if (ownWork) {
+      keepPending = !(await this.tryCheckpoint({ videoKey: sha, name: t('ctl.checkpoint.otherDraft', { file: cv.meta.fileName }), kind: 'auto-before-conflict', segments: cv.doc.segments, phases: cv.doc.phases }));
+      if (this.video !== cv) return;
+    }
+    const bySha = ((await drafts.get(sha).catch(() => null)) as StoredDraft | null) ?? null;
+    if (this.video !== cv) return;
+    if (pk !== sha) await checkpoints.rekey(pk, sha).catch(() => 0);
+    if (bySha) {
+      this.adoptDraft(cv, bySha);
+    } else {
+      const index = cv.index as FrameIndex;
+      cv.meta = newDraft({ sha256: sha, fingerprint: fp, fileName: cv.name, relPath: cv.relPath, frameCount: index.frameCount, durationUs: index.durationUs });
+      cv.doc = { segments: [], phases: {} };
+      cv.touched = false;
+    }
+    cv.history.clear();
+    cv.saveWanted = false;
+    if (ownWork && !keepPending && pk !== sha) await drafts.delete(pk).catch(() => undefined);
+    cv.edited = false;
+    if (this.video !== cv) return;
+    this.set({ editor: { ...this.s.editor, pendingStart: null, selectedSegmentId: null } });
+    this.toast('warning', msg('ctl.video.provisionalMismatch'));
+  }
+
   private async promote(cv: Video, sha: string): Promise<void> {
     const { drafts, checkpoints } = this.deps;
     const pk = cv.meta.key;
+    const base = cv.provisional;
+    cv.provisional = null;
     const result = cv.meta.revision > 0 ? await drafts.promotePending(pk, sha) : ({ kind: 'not_found' } as const);
     if (this.video !== cv) return;
     if (result.kind === 'promoted') {
@@ -974,26 +1185,39 @@ class Controller<P extends PlayerLike> {
       if (cv.touched) cv.saveWanted = true;
       return;
     }
-    const keepMine = cv.touched && (result.kind !== 'collision' || result.pending.savedAt >= existing.savedAt);
-    if (keepMine) {
-      await checkpoints
-        .create({ videoKey: sha, name: t('ctl.checkpoint.otherDraft', { file: existing.fileName }), kind: 'auto-before-conflict', segments: existing.segments, phases: existing.phases })
-        .catch(() => undefined);
+    const pendingStored = result.kind === 'collision';
+    if (base && base.sha256 === sha && base.revision === existing.revision) {
+      // This doc continues the very sha256 draft adopted by fingerprint, unchanged since: the
+      // pending edits simply become its next revision (no conflict, no checkpoint).
       cv.meta = { ...cv.meta, key: sha, sha256: sha, revision: existing.revision, exported: cv.meta.exported ?? existing.exported };
       this.autosaver.rebase(sha, existing.revision);
-      cv.saveWanted = true;
+      if (pendingStored) {
+        // The pending record goes only once its content is stored under the sha256 key.
+        if (await this.saveNow(cv)) await drafts.delete(pk).catch(() => undefined);
+      }
+      return;
+    }
+    const keepMine = cv.touched && (!pendingStored || result.pending.savedAt >= existing.savedAt);
+    if (keepMine) {
+      const kept = await this.tryCheckpoint({ videoKey: sha, name: t('ctl.checkpoint.otherDraft', { file: existing.fileName }), kind: 'auto-before-conflict', segments: existing.segments, phases: existing.phases });
+      // Without a checkpoint the stored draft must not be overwritten: keep saving under the
+      // pending key; both versions stay stored.
+      if (!kept || this.video !== cv) return;
+      cv.meta = { ...cv.meta, key: sha, sha256: sha, revision: existing.revision, exported: cv.meta.exported ?? existing.exported };
+      this.autosaver.rebase(sha, existing.revision);
+      const saved = await this.saveNow(cv);
+      if (saved && pendingStored) await drafts.delete(pk).catch(() => undefined);
       this.toast('info', msg('ctl.video.collisionKept', { file: existing.fileName }));
     } else {
       if (cv.touched) {
-        await checkpoints
-          .create({ videoKey: sha, name: t('ctl.checkpoint.otherDraft', { file: cv.meta.fileName }), kind: 'auto-before-conflict', segments: cv.doc.segments, phases: cv.doc.phases })
-          .catch(() => undefined);
+        const kept = await this.tryCheckpoint({ videoKey: sha, name: t('ctl.checkpoint.otherDraft', { file: cv.meta.fileName }), kind: 'auto-before-conflict', segments: cv.doc.segments, phases: cv.doc.phases });
+        if (!kept || this.video !== cv) return;
         this.toast('info', msg('ctl.video.collisionLoaded', { file: existing.fileName }));
       }
       this.adoptDraft(cv, existing);
       cv.history.clear();
+      if (pendingStored) await drafts.delete(pk).catch(() => undefined);
     }
-    if (result.kind === 'collision') await drafts.delete(pk).catch(() => undefined);
   }
 
   // ================================================================ sidecars
@@ -1089,6 +1313,7 @@ class Controller<P extends PlayerLike> {
       cv.meta = { ...cv.meta, exported: baseline };
       if (manual) {
         cv.touched = true;
+        cv.edited = true;
         this.scheduleSave(cv);
       } else if (cv.touched) this.scheduleSave(cv);
       if (!manual) cv.history.clear();
@@ -1105,10 +1330,9 @@ class Controller<P extends PlayerLike> {
   }
 
   private async applyImportReplacing(cv: Video, imp: PendingImport): Promise<void> {
-    await this.deps.checkpoints
-      .create({ videoKey: cv.meta.key, name: t('ctl.checkpoint.beforeImport', { file: imp.fileName }), kind: 'auto-before-import', segments: cv.doc.segments, phases: cv.doc.phases })
-      .catch((e) => this.toast('error', msg('ctl.checkpoint.failed', { message: errorText(e) })));
-    if (this.video !== cv) return;
+    // The draft is replaced only once it is safely kept as a checkpoint.
+    const kept = await this.tryCheckpoint({ videoKey: cv.meta.key, name: t('ctl.checkpoint.beforeImport', { file: imp.fileName }), kind: 'auto-before-import', segments: cv.doc.segments, phases: cv.doc.phases });
+    if (!kept || this.video !== cv) return;
     const doc = this.docFromParsed(imp.parsed);
     this.commitDoc(cv, doc, { selected: null });
     cv.meta = { ...cv.meta, exported: { contentHash: computeContentHash(doc.segments, doc.phases), at: imp.at, targets: [{ label: imp.label, format: imp.format }] } };
@@ -1139,6 +1363,7 @@ class Controller<P extends PlayerLike> {
     if (opts.history !== false) cv.history.push(this.snapshot(cv));
     cv.doc = doc;
     cv.touched = true;
+    cv.edited = true;
     cv.exportError = null;
     const editor = { ...this.s.editor };
     if (opts.pendingStart !== undefined) editor.pendingStart = opts.pendingStart;
@@ -1189,13 +1414,16 @@ class Controller<P extends PlayerLike> {
   }
 
   private buildDraft(cv: Video): StoredDraft {
-    return {
+    const draft: StoredDraft = {
       ...cv.meta,
       segments: cv.doc.segments,
       phases: cv.doc.phases,
       contentHash: computeContentHash(cv.doc.segments, cv.doc.phases),
       touched: cv.touched,
     };
+    if (cv.provisional && cv.meta.sha256 === null) draft.basedOn = cv.provisional;
+    else delete draft.basedOn;
+    return draft;
   }
 
   /** Whether the video has a usable draft key (pending fingerprint key or sha256). */
@@ -1278,8 +1506,34 @@ class Controller<P extends PlayerLike> {
     return cv;
   }
 
-  /** The displayed frame, confirmed by the player; null (with feedback) when it cannot be. */
-  private async confirmFrame(cv: Video): Promise<number | null> {
+  /**
+   * What the user is aiming at when a mark key is pressed, read synchronously at the key press:
+   * the pending seek target if one is in flight, else the displayed frame. Navigation issued after
+   * the key press must never change the frame that key commits.
+   */
+  private markIntent(): MarkIntent | null {
+    const player = this.player;
+    if (!player) return null;
+    const snap = player.getSnapshot();
+    return { player, playing: snap.playing, displayed: snap.displayedFrame, frame: snap.playing ? snap.displayedFrame : (snap.requestedFrame ?? snap.displayedFrame) };
+  }
+
+  /** Runs marking/boundary actions one after another so W sees the start Q is still confirming. */
+  private serialMark(fn: () => Promise<void>): Promise<void> {
+    const run = this.markChain.then(fn, fn);
+    this.markChain = run.catch(() => undefined);
+    return run;
+  }
+
+  private notConfirmedMoved(): Msg {
+    return msg('ctl.mark.notConfirmed.moved');
+  }
+
+  /**
+   * The frame the key press aimed at, once the player confirms it is on screen; null (with
+   * feedback) when it cannot be confirmed or a later seek replaced it before it was shown.
+   */
+  private async confirmFrame(cv: Video, intent: MarkIntent | null): Promise<number | null> {
     const player = this.player;
     if (!player) {
       this.feedback('error', msg('mark.err.notReady'));
@@ -1290,7 +1544,10 @@ class Controller<P extends PlayerLike> {
       this.feedback('error', snap.status === 'error' ? msg('ctl.mark.notConfirmed.decoder', { code: snap.error?.code ?? 'decode_failed' }) : msg('mark.err.notReady'));
       return null;
     }
-    if (snap.playing && snap.displayedFrame !== null) return snap.displayedFrame;
+    const want = intent && intent.player === player ? intent.frame : null;
+    // During playback the frame on the canvas at the key press is the confirmed one.
+    if (intent && intent.player === player && intent.playing && intent.displayed !== null) return intent.displayed;
+    if (!intent && snap.playing && snap.displayedFrame !== null) return snap.displayedFrame;
     this.feedback('waiting', msg('ctl.mark.waiting'));
     const r = await player.settled(this.settleTimeout);
     if (this.video !== cv || this.player !== player) {
@@ -1303,19 +1560,24 @@ class Controller<P extends PlayerLike> {
       else this.feedback('error', msg('ctl.mark.notConfirmed.decoder', { code: r.error }));
       return null;
     }
+    if (want !== null && r.frame !== want) {
+      // Another seek (step, jump, scrub) replaced the target before it was shown.
+      this.feedback('error', this.notConfirmedMoved());
+      return null;
+    }
     return r.frame;
   }
 
-  private async markStart(): Promise<void> {
+  private async markStart(intent: MarkIntent | null): Promise<void> {
     const cv = this.readyVideo();
     if (!cv) return this.feedback('error', msg('mark.err.notReady'));
-    const frame = await this.confirmFrame(cv);
+    const frame = await this.confirmFrame(cv, intent);
     if (frame === null || this.video !== cv) return;
     this.setPending(cv, frame);
     this.feedback('ok', msg('ctl.mark.startSet', { frame }));
   }
 
-  private async finish(mode: 'finish' | 'next' | 'end'): Promise<void> {
+  private async finish(mode: 'finish' | 'next' | 'end', intent: MarkIntent | null): Promise<void> {
     const cv = this.readyVideo();
     if (!cv) return this.feedback('error', msg('mark.err.notReady'));
     const phaseId = this.s.selectedPhaseId;
@@ -1326,7 +1588,7 @@ class Controller<P extends PlayerLike> {
     if (mode === 'end') {
       end = N;
     } else {
-      const frame = await this.confirmFrame(cv);
+      const frame = await this.confirmFrame(cv, intent);
       if (frame === null || this.video !== cv) return;
       end = frame;
     }
@@ -1396,14 +1658,16 @@ class Controller<P extends PlayerLike> {
       const player = this.player as P;
       if (player.getSnapshot().playing) player.pause();
       this.feedback('waiting', msg('ctl.mark.waiting'));
-      const outcome = await player.seek(Math.min(moved, N - 1));
+      const shown = Math.min(moved, N - 1);
+      const outcome = await player.seek(shown);
       if (this.video !== cv) return false;
       if (!outcome.ok) {
-        if (outcome.superseded) this.clearWaiting();
+        // Never drop an edit silently: say why it was not applied (a later seek interrupted it).
+        if (outcome.superseded) this.feedback('error', this.notConfirmedMoved());
         else this.feedback('error', outcome.error === 'not_ready' || outcome.error === 'unloaded' ? msg('mark.err.notReady') : msg('ctl.mark.notConfirmed.decoder', { code: outcome.error }));
         return false;
       }
-      const confirmed = await this.confirmFrame(cv);
+      const confirmed = await this.confirmFrame(cv, { player, playing: false, displayed: shown, frame: shown });
       if (confirmed === null || this.video !== cv) return false;
     }
     const r = updateSegment(cv.doc.segments, id, bounds, N, { linkAdjacent: link });
@@ -1417,10 +1681,10 @@ class Controller<P extends PlayerLike> {
     return true;
   }
 
-  private async setSegmentBoundaryToCurrent(id: string, which: 'start' | 'end'): Promise<void> {
+  private async setSegmentBoundaryToCurrent(id: string, which: 'start' | 'end', intent: MarkIntent | null): Promise<void> {
     const cv = this.readyVideo();
     if (!cv) return this.feedback('error', msg('mark.err.notReady'));
-    const frame = await this.confirmFrame(cv);
+    const frame = await this.confirmFrame(cv, intent);
     if (frame === null || this.video !== cv) return;
     const N = (cv.index as FrameIndex).frameCount;
     const target = cv.doc.segments.find((s) => s.id === id);
@@ -1578,8 +1842,10 @@ class Controller<P extends PlayerLike> {
   private exportPlace(cv: Video, kind: ExportDestination['kind']): ExportPlace {
     if (kind === 'download') return { kind: 'download' };
     if (kind === 'folder') return { kind: 'folder', root: this.exportFolder, subdirs: cv.subdirs };
-    // Read-only virtual folders and browsers without the File System Access API can only download.
-    if (cv.dir?.kind === 'virtual' || !this.s.capabilities.fileSystemAccess) return { kind: 'download' };
+    // Read-only virtual folders, folders granted read access only (the folder.readOnly notice
+    // promises "Exports will be downloaded") and browsers without the File System Access API can
+    // only download. Keep this in line with that notice's wording.
+    if (cv.dir?.kind === 'virtual' || !this.s.capabilities.fileSystemAccess || this.s.batch.access === 'read') return { kind: 'download' };
     return { kind: 'beside', dir: cv.dir };
   }
 
@@ -1606,6 +1872,12 @@ class Controller<P extends PlayerLike> {
       }
       const kind = opts.destination ?? this.s.settings.exportDestination.kind;
       const place = this.exportPlace(cv, kind);
+      if (place.kind !== 'download' && (this.s.stale !== null || this.autosaver.isBlocked(cv.meta.key))) {
+        // A newer version exists in another tab: never write this tab's older version over the
+        // file beside the video (a download is the user's explicit choice and overwrites nothing).
+        cv.exportError = msg('stale.banner');
+        return fail(cv.exportError);
+      }
       const r = await runExport(this.deps.fs, {
         video: { sha256: sha, frameCount: index.frameCount, durationUs: index.durationUs, fileName: cv.name },
         segments: doc.segments,
@@ -1614,6 +1886,7 @@ class Controller<P extends PlayerLike> {
         formats: formatsFor(this.s.settings.exportFormat),
         place,
         request: opts.request,
+        beforeOverwrite: (e) => this.keepOverwrittenExport(cv, e.name, e.parsed),
       });
       if (!r.ok) {
         cv.exportError = r.msg;
@@ -1636,6 +1909,27 @@ class Controller<P extends PlayerLike> {
     }
   }
 
+  /**
+   * An export of this video is about to be replaced. If its annotations are neither this tab's last
+   * export nor the current ones (e.g. a colleague's file the user chose not to import), keep them
+   * as a checkpoint first; refuse to overwrite when that checkpoint cannot be stored.
+   */
+  private async keepOverwrittenExport(cv: Video, name: string, parsed: ParsedAnnotation): Promise<Msg | null> {
+    const { segments, phases } = toSegments(parsed);
+    const snapshot: Record<string, PhaseDef> = {};
+    for (const p of phases) snapshot[p.id] = { id: p.id, name: p.name, color: this.s.library.phases[p.id]?.color ?? phaseOps.PHASE_PALETTE[0] };
+    const hash = computeContentHash(segments, snapshot);
+    if (hash === cv.meta.exported?.contentHash || hash === computeContentHash(cv.doc.segments, cv.doc.phases)) return null;
+    const created = await this.deps.checkpoints
+      .create({ videoKey: cv.meta.key, name: t('ctl.checkpoint.otherDraft', { file: name }), kind: 'auto-before-conflict', segments, phases: snapshot })
+      .then(
+        () => null,
+        (e: unknown) => msg('ctl.checkpoint.failed', { message: errorText(e) }),
+      );
+    if (!created && this.video === cv) void this.refreshCheckpoints(cv);
+    return created;
+  }
+
   private async setExportFolder(dir: HandleDirRef): Promise<void> {
     this.exportFolder = dir;
     await this.deps.handles.put(EXPORT_FOLDER_HANDLE_ID, dir.handle).catch(() => undefined);
@@ -1653,7 +1947,7 @@ class Controller<P extends PlayerLike> {
     }
     if (choice === 'switch-without-export') {
       const cv = this.video;
-      if (cv && this.isDirty(cv)) this.unexported.add(cv.meta.key);
+      if (cv && this.isDirty(cv)) this.markUnexported(cv);
       this.pendingSwitch = null;
       this.set({ dialog: null, unexportedCount: this.unexportedCount() });
       await pending.run();
@@ -1684,11 +1978,10 @@ class Controller<P extends PlayerLike> {
     const key = cv.meta.key;
     const stored = ((await this.deps.drafts.get(key).catch(() => null)) as StoredDraft | null) ?? null;
     if (this.video !== cv) return;
-    const { checkpoints } = this.deps;
     if (choice === 'load-newer') {
-      await checkpoints
-        .create({ videoKey: key, name: t('ctl.checkpoint.mineBeforeNewer'), kind: 'auto-before-conflict', segments: cv.doc.segments, phases: cv.doc.phases })
-        .catch(() => undefined);
+      // Replace nothing unless this tab's version is safely kept first.
+      if (!(await this.tryCheckpoint({ videoKey: key, name: t('ctl.checkpoint.mineBeforeNewer'), kind: 'auto-before-conflict', segments: cv.doc.segments, phases: cv.doc.phases }))) return;
+      if (this.video !== cv) return;
       this.autosaver.discardPending();
       cv.saveWanted = false;
       if (stored) {
@@ -1703,9 +1996,8 @@ class Controller<P extends PlayerLike> {
       this.toast('info', msg('ctl.stale.loaded'));
     } else {
       if (stored) {
-        await checkpoints
-          .create({ videoKey: key, name: t('ctl.checkpoint.otherTab', { revision: stored.revision }), kind: 'auto-before-conflict', segments: stored.segments, phases: stored.phases })
-          .catch(() => undefined);
+        if (!(await this.tryCheckpoint({ videoKey: key, name: t('ctl.checkpoint.otherTab', { revision: stored.revision }), kind: 'auto-before-conflict', segments: stored.segments, phases: stored.phases }))) return;
+        if (this.video !== cv) return;
       }
       cv.meta = { ...cv.meta, revision: stored?.revision ?? 0 };
       this.set({ stale: null });
@@ -1809,7 +2101,8 @@ class Controller<P extends PlayerLike> {
       this.scanAbort?.abort();
       this.bgAbort?.abort();
       this.items = new Map();
-      this.set({ batch: emptyBatch(), dialog: null, unexportedCount: this.unexportedCount() });
+      this.set({ batch: emptyBatch(), dialog: null });
+      this.set({ unexportedCount: this.unexportedCount() });
     };
     if (this.s.dialog?.kind === 'confirm-close-batch') {
       this.set({ dialog: null });
@@ -1845,7 +2138,8 @@ class Controller<P extends PlayerLike> {
     const v = verifyAgainstVideo(parsed.file, { sha256: sha, frameCount: index.frameCount, durationUs: index.durationUs, boundaryUs: (b) => boundaryUs(index, b) });
     if (!v.ok) {
       return this.toast('error', msg('ctl.import.rejected', { file: fileName, count: v.problems.length }), {
-        action: { label: msg('common.details'), run: () => this.toast('info', verifyProblemMsg(v.problems[0]), { timeout: null }) },
+        // Every problem (up to the toast stack size), not just the first.
+        action: { label: msg('common.details'), run: () => v.problems.slice(0, 5).forEach((p) => this.toast('info', verifyProblemMsg(p), { timeout: null })) },
       });
     }
     this.offerImport(cv, { parsed: parsed.file, label, fileName, format: parsed.file.format, at }, true);
@@ -1922,10 +2216,20 @@ class Controller<P extends PlayerLike> {
       setSort: s((key: SortKey, dir?: SortDir) => this.setSort(key, dir), undefined),
       closeBatch: a(() => this.closeBatch()),
 
-      markStart: a(() => this.markStart()),
-      markFinish: a(() => this.finish('finish')),
-      markFinishAndNext: a(() => this.finish('next')),
-      markThroughEnd: a(() => this.finish('end')),
+      // The intent is read synchronously at the key press, then the action waits its turn.
+      markStart: a(() => {
+        const intent = this.markIntent();
+        return this.serialMark(() => this.markStart(intent));
+      }),
+      markFinish: a(() => {
+        const intent = this.markIntent();
+        return this.serialMark(() => this.finish('finish', intent));
+      }),
+      markFinishAndNext: a(() => {
+        const intent = this.markIntent();
+        return this.serialMark(() => this.finish('next', intent));
+      }),
+      markThroughEnd: a(() => this.serialMark(() => this.finish('end', null))),
       cancelPendingStart: s(() => {
         const cv = this.video;
         if (cv && this.s.editor.pendingStart !== null) {
@@ -1941,8 +2245,17 @@ class Controller<P extends PlayerLike> {
 
       selectSegment: s((id: string | null, opts?: { seek?: boolean }) => this.selectSegment(id, opts), undefined),
       relabelSegment: s((id: string, phaseId: string) => this.relabelSegment(id, phaseId), undefined),
-      setSegmentBounds: (id, bounds, opts) => this.guard(() => this.setSegmentBounds(id, bounds, opts), false),
-      setSegmentBoundaryToCurrent: a((id: string, which: 'start' | 'end') => this.setSegmentBoundaryToCurrent(id, which)),
+      setSegmentBounds: (id, bounds, opts) =>
+        this.guard(() => {
+          let ok = false;
+          return this.serialMark(async () => {
+            ok = await this.setSegmentBounds(id, bounds, opts);
+          }).then(() => ok);
+        }, false),
+      setSegmentBoundaryToCurrent: a((id: string, which: 'start' | 'end') => {
+        const intent = this.markIntent();
+        return this.serialMark(() => this.setSegmentBoundaryToCurrent(id, which, intent));
+      }),
       deleteSegment: s((id: string) => this.deleteSegment(id), undefined),
       undo: s(() => this.undoRedo('undo'), undefined),
       redo: s(() => this.undoRedo('redo'), undefined),
@@ -1979,7 +2292,9 @@ class Controller<P extends PlayerLike> {
           const r = await this.exportCurrent({ request: true });
           if (!r.ok) {
             const m = r.failure.reason === 'write' ? r.failure.msg : r.failure.reason === 'validation' ? msg('ctl.export.validation', { count: r.failure.issues.length }) : msg('switch.hashPending');
-            this.toast('error', m);
+            const canDownload = r.failure.reason === 'write' && this.s.settings.exportDestination.kind !== 'download';
+            const action = canDownload ? { label: msg('switch.download'), run: () => void this.guard(() => this.exportCurrent({ request: true, destination: 'download' }), undefined) } : undefined;
+            this.toast('error', m, action ? { action } : {});
           }
           return r.ok;
         }, false),
@@ -2028,7 +2343,7 @@ class Controller<P extends PlayerLike> {
       },
       getFrameIndex: () => this.video?.index ?? null,
       getCanvas: () => this.canvas,
-      getThumbnail: (frame) => this.player?.peekThumbnail(frame) ?? null,
+      getThumbnail: (frame) => this.player?.peekPrecedingThumbnail(frame) ?? null,
       openDirectoryHandle: (handle) => this.guard(() => this.openRoot(handleDir(handle)), undefined),
       openFileHandle: (handle, parent) =>
         this.guard(async () => {
@@ -2045,6 +2360,9 @@ class Controller<P extends PlayerLike> {
           await this.bgWork;
           await this.autosaver.flush();
         }
+      },
+      setFsOverrides: (overrides) => {
+        this.deps.fs = { ...this.baseFs, ...overrides };
       },
       dispose: () => {
         for (const c of this.cleanups.splice(0)) c();

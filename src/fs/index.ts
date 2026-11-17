@@ -2,7 +2,7 @@ export * from './types';
 export { supportsFileSystemAccess, pickVideoFile, pickFolder, pickAnnotationFile, pickExportFolder } from './pickers';
 export { scanFolder, openEntry, type ScanOptions, type ScanProgress } from './scan';
 export { sortEntries, type SortKey, type SortDir, type SortableEntry } from './sort';
-export { naturalCompare, comparePaths, isSidecarFor, isVideoName, stemOf } from './names';
+export { naturalCompare, comparePaths, isSidecarFor, ownsSidecar, sidecarNamesFor, isVideoName, stemOf } from './names';
 export {
   queryPermission,
   ensurePermission,

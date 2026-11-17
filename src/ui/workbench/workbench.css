@@ -28,11 +28,16 @@
 .wb-batchpos { flex-shrink: 0; min-width: 7ch; font-family: var(--font-mono); font-size: 12px; color: var(--c-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .wb-batchpos b { color: var(--c-text); font-weight: 500; }
 .wb-batchpos--none { font-family: var(--font-sans); color: var(--c-text-faint); }
-.wb-state { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12px; color: var(--c-text-muted); white-space: nowrap; }
+.wb-state { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12px; color: var(--c-text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* Reserved widths so the export state does not slide as "Saving…" / "Saved 12:34:56" alternate. */
+.wb-state--save { flex-shrink: 0; }
+.wb-state--save > .ui-status { min-width: var(--save-w, 116px); }
+.wb-state--export > .ui-status { flex-shrink: 0; min-width: var(--export-w, 136px); }
 .wb-state-label { color: var(--c-text-muted); flex-shrink: 0; }
 .wb-state .ui-btn { margin-left: -2px; }
 .wb-state--export { flex-shrink: 1; }
-.wb-state-target { max-width: 220px; color: var(--c-text-muted); font-size: 12px; }
+.wb-state-target { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 240px; color: var(--c-text-muted); font-size: 12px; }
+.wb-state-target-name { min-width: 0; flex: 1; }
 .wb-top-end { margin-left: auto; display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 
 .wb-main { display: grid; grid-template-columns: minmax(0, 1fr) 300px; min-height: 0; }
@@ -138,28 +143,36 @@
 .wb-preview canvas { display: block; border-radius: var(--r-1); }
 .wb-preview-text { display: flex; justify-content: space-between; gap: 8px; padding: 4px 2px 0; font-size: 11px; line-height: 16px; color: var(--c-text); white-space: nowrap; }
 .wb-preview-text .u-mono { color: var(--c-text-muted); }
+.wb-preview-note { padding: 0 2px; font-size: 11px; line-height: 16px; color: var(--c-text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 /* ---------------------------------------------------------------- phase panel */
 .wb-side { display: flex; flex-direction: column; min-height: 0; background: var(--c-panel); }
+/*
+ * Height budget (keep in sync with SIDE_MIN in AppShell.tsx): selected bar 37 + recent block 349
+ * (ten 24 px chip rows with 4 px gaps, even when no two labels share a row) + marking block 180.
+ */
 .wb-section { padding: 12px 16px; border-bottom: var(--hairline); }
 .wb-section--grow { flex: 1; min-height: 0; overflow: auto; }
-.wb-section--pinned { flex-shrink: 0; border-top: var(--hairline); border-bottom: 0; margin-top: -1px; }
+.wb-section--pinned { flex-shrink: 0; padding-top: 10px; padding-bottom: 10px; border-top: var(--hairline); border-bottom: 0; margin-top: -1px; }
 .wb-section-title { display: flex; align-items: center; justify-content: space-between; height: 20px; margin-bottom: 8px; font-size: 11px; font-weight: 600; color: var(--c-text-muted); letter-spacing: 0.02em; }
+.wb-section--pinned .wb-section-title { margin-bottom: 6px; }
 .wb-section-title .ui-btn { color: var(--c-text-muted); font-weight: 400; margin-right: -8px; }
 .wb-section-title .ui-btn:hover:not(:disabled) { color: var(--c-text); }
-.wb-selected { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.wb-selected-swatch { flex-shrink: 0; width: 32px; height: 32px; border-radius: 4px; background: var(--sel); }
+.wb-selbar { flex-shrink: 0; padding-top: 6px; padding-bottom: 6px; }
+.wb-selected { display: flex; align-items: center; gap: 8px; height: 24px; min-width: 0; }
+.wb-selected-label { flex-shrink: 0; font-size: 11px; font-weight: 600; color: var(--c-text-muted); letter-spacing: 0.02em; white-space: nowrap; }
+.wb-selected-swatch { flex-shrink: 0; width: 14px; height: 14px; border-radius: 3px; background: var(--sel); }
 .wb-selected-swatch--none { background: transparent; border: 1px dashed var(--c-line-strong); }
-.wb-selected-text { min-width: 0; flex: 1; }
-.wb-selected-name { font-size: 15px; line-height: 22px; font-weight: 600; }
+.wb-selected-name { flex: 1; min-width: 0; font-size: 13px; line-height: 20px; font-weight: 600; }
 .wb-selected-name--none { color: var(--c-text-faint); font-weight: 400; }
-.wb-selected-id { font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: var(--c-text-muted); }
 .wb-chips { display: flex; flex-wrap: wrap; gap: 4px; }
-.wb-recent { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 8px; }
+.wb-chips > .ui-chip { max-width: 100%; }
+.wb-chips--recent > .ui-chip { height: 24px; font-size: 12px; }
+.wb-recent { display: flex; flex-direction: column; overflow: hidden; padding-top: 8px; padding-bottom: 8px; }
+.wb-recent .wb-section-title { margin-bottom: 4px; }
 .wb-recent-list { flex: 1; min-height: 0; overflow: auto; margin: 0 -4px; padding: 2px 4px; }
-.wb-recent-foot { flex-shrink: 0; padding-top: 4px; }
-.wb-chip-row { display: flex; gap: 4px; margin-left: -8px; }
-.wb-preset-row { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
+.wb-recent-foot { display: flex; align-items: center; gap: 4px; flex-shrink: 0; padding-top: 4px; margin-left: -8px; }
+.wb-preset-row { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
 .wb-preset-row .ui-select { flex: 1; min-width: 0; }
 .wb-hint { font-size: 12px; line-height: 16px; color: var(--c-text-muted); }
 
@@ -175,16 +188,17 @@
 .wb-custom-foot { display: flex; align-items: flex-start; gap: 8px; }
 .wb-form-error { flex: 1; min-height: 16px; font-size: 12px; line-height: 16px; color: var(--c-danger); }
 
-.wb-pendingbox { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 4px 0 10px; border: 1px solid var(--c-line-strong); border-radius: 4px; background: var(--c-bg); }
+.wb-pendingbox { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 4px 0 10px; border: 1px solid var(--c-line-strong); border-radius: 4px; background: var(--c-bg); }
 .wb-pendingbox--active { border-color: var(--c-text-muted); box-shadow: inset 2px 0 0 var(--c-text); }
 .wb-pendingbox-label { font-size: 12px; color: var(--c-text-muted); white-space: nowrap; }
 .wb-pendingbox-value { font-family: var(--font-mono); font-size: 14px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .wb-pendingbox:not(.wb-pendingbox--active) .wb-pendingbox-value { color: var(--c-text-faint); font-weight: 400; }
 .wb-pendingbox .ui-tooltip-anchor { margin-left: auto; }
-.wb-markgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
-.wb-markgrid .ui-btn { justify-content: flex-start; height: 32px; padding: 0 6px 0 10px; }
+.wb-pendingbox-phase { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12px; color: var(--c-text-muted); }
+.wb-markgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 6px; }
+.wb-markgrid .ui-btn { justify-content: flex-start; height: 28px; padding: 0 6px 0 10px; }
 .wb-markgrid .ui-btn__label { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wb-feedback { display: flex; align-items: flex-start; gap: 6px; min-height: 36px; margin-top: 8px; font-size: 12px; line-height: 16px; color: var(--c-text-muted); }
+.wb-feedback { display: flex; align-items: flex-start; gap: 6px; min-height: 32px; margin-top: 6px; font-size: 12px; line-height: 16px; color: var(--c-text-muted); }
 .wb-feedback-msg { display: flex; align-items: flex-start; gap: 6px; flex: 1; min-width: 0; }
 .wb-feedback-icon { flex-shrink: 0; margin-top: 1px; }
 .wb-feedback--error { color: var(--c-warn); }
@@ -232,7 +246,7 @@ table.wb-table { width: 100%; table-layout: fixed; font-size: 12px; }
 .wb-inline-form-field { flex: 1; max-width: 360px; }
 
 .wb-export { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(240px, 1fr); }
-.wb-export-col { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px; min-width: 0; }
+.wb-export-col { display: flex; flex-direction: column; gap: 8px; padding: 10px 16px; min-width: 0; }
 .wb-export-col + .wb-export-col { border-left: var(--hairline); }
 .wb-export-col-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 24px; }
 .wb-export-col-head h3 { font-size: 11px; font-weight: 600; color: var(--c-text-muted); }
@@ -261,8 +275,9 @@ table.wb-table { width: 100%; table-layout: fixed; font-size: 12px; }
 .wb-sidecar-count { font-size: 11px; color: var(--c-text-muted); white-space: nowrap; }
 .wb-sidecar-problems { margin-top: 2px; font-size: 12px; line-height: 16px; color: var(--c-danger); }
 
-.wb-progress { flex-shrink: 0; padding: 0 16px 6px; }
-.wb-progress-row { display: flex; justify-content: space-between; font-size: 11px; color: var(--c-text-muted); padding: 6px 0 4px; font-variant-numeric: tabular-nums; }
+.wb-head-progress { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--c-text-muted); font-variant-numeric: tabular-nums; }
+.wb-head-progress-label { min-width: 0; }
+.wb-head-progress-bar { flex: 0 1 64px; min-width: 24px; }
 
 .wb-batch-head,
 .wb-batch-row {

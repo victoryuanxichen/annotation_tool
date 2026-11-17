@@ -8,8 +8,8 @@ export interface ChipProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>,
   selected?: boolean;
   /** Shortcut digit shown at the end, e.g. "1" or "⇧1". */
   shortcut?: string;
-  /** Maximum width in px before the label ellipsizes (full name stays in the title). */
-  maxWidth?: number;
+  /** Maximum width (px, or any CSS length such as '100%') before the label ellipsizes (full name stays in the title). */
+  maxWidth?: number | string;
   ref?: Ref<HTMLButtonElement>;
 }
 

@@ -137,6 +137,7 @@ export class FramePlayer {
         frame: (frame, f) => this.onDecoded(seq, frame, f),
         error: (e) => seq === this.loadSeq && this.fail(toFailure(e, 'decode_failed')),
         dequeue: () => seq === this.loadSeq && this.pump(),
+        recoveryFailed: (sample) => seq === this.loadSeq && this.session?.source.rejectRecoveryPoint(sample),
       });
       const thumbs = new ThumbnailStrip(index, source, config, () => this.whenIdle());
       this.session = { index, source, decoder, thumbs };
@@ -274,9 +275,17 @@ export class FramePlayer {
     return this.snapshot;
   }
 
-  /** Nearest decoded keyframe thumbnail (~160 px wide) for the scrub preview. */
+  /** Nearest decoded keyframe thumbnail (~160 px wide). */
   peekThumbnail(frame: number): ImageBitmap | null {
     return this.session?.thumbs.nearest(frame) ?? null;
+  }
+
+  /**
+   * Scrub-preview thumbnail: the closest decoded keyframe at or before `frame` (never a picture
+   * later than the hovered frame) and its frame number, or null when none is ready yet.
+   */
+  peekPrecedingThumbnail(frame: number): { frame: number; bitmap: ImageBitmap } | null {
+    return this.session?.thumbs.atOrBefore(frame) ?? null;
   }
 
   getStats(): PlayerStats {
@@ -326,6 +335,9 @@ export class FramePlayer {
       this.rafId = requestAnimationFrame(this.tick);
       this.pump();
     }
+    // A frame presented here is painted in this animation frame; a rAF requested now would only
+    // run in the next one, leaving the counter one frame behind the canvas. Deliver right away.
+    this.deliverNow();
   };
 
   /** Presents the newest decoded frame that is due, dropping older ones. Never goes backwards. */
@@ -543,7 +555,7 @@ export class FramePlayer {
 
   /**
    * Whether the current run will produce `first` if we keep feeding it, and that doing so is
-   * no more expensive than a reset and a new run from the frame's own IDR sample.
+   * no more expensive than a reset and a new run from the frame's own random-access sample.
    */
   private canContinue(s: Session, run: DecodeRun, first: number): boolean {
     if (run.flushed || run.lastOutput >= first || first < run.minFrame) return false;
@@ -584,7 +596,7 @@ export class FramePlayer {
     const current = this.currentGoal(s);
     // The goal moved while the start sample was being verified: plan again.
     if (current === null || current === 'wait' || current.first !== goal.first) return;
-    s.decoder.start(start, goal.first);
+    s.decoder.start(start, goal.first, s.source.isRecoveryPoint(start));
     this.counters.runs++;
   }
 
@@ -659,14 +671,19 @@ export class FramePlayer {
     this.notifyPending = true;
     const token = ++this.notifyToken;
     const deliver = (): void => {
-      if (!this.notifyPending || token !== this.notifyToken) return;
-      this.notifyPending = false;
-      const snap = this.getSnapshot();
-      for (const fn of this.listeners) fn(snap);
+      if (token === this.notifyToken) this.deliverNow();
     };
     requestAnimationFrame(deliver);
     // rAF does not run in background tabs; make sure state still propagates.
     setTimeout(deliver, 100);
+  }
+
+  /** Delivers a pending change to subscribers now (no-op when nothing is pending). */
+  private deliverNow(): void {
+    if (!this.notifyPending) return;
+    this.notifyPending = false;
+    const snap = this.getSnapshot();
+    for (const fn of this.listeners) fn(snap);
   }
 }
 

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type ReactElement } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactElement } from 'react';
 import { createPortal } from 'react-dom';
 import { formatTimecode, useT } from '../../../i18n';
 import { getThumbnail } from '../../app';
@@ -7,6 +7,7 @@ const THUMB_W = 160;
 const THUMB_H = 90;
 const BOX_W = THUMB_W + 8;
 const BOX_H = THUMB_H + 34;
+const NOTE_H = 16;
 
 export interface HoverPreviewProps {
   /** Timeline box in viewport coordinates. */
@@ -17,10 +18,12 @@ export interface HoverPreviewProps {
   timeUs: number;
 }
 
-/** Scrub preview above the timeline: nearest keyframe thumbnail, frame number and time. */
+/** Scrub preview above the timeline: preceding keyframe thumbnail, frame number and time. */
 export function HoverPreview({ anchor, x, frame, timeUs }: HoverPreviewProps): ReactElement {
   const t = useT();
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // Frame of the keyframe picture actually drawn (null: none decoded yet).
+  const [shownFrame, setShownFrame] = useState<number | null>(null);
 
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
@@ -32,8 +35,10 @@ export function HoverPreview({ anchor, x, frame, timeUs }: HoverPreviewProps): R
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = '#050607';
     ctx.fillRect(0, 0, THUMB_W, THUMB_H);
-    const bitmap = getThumbnail(frame);
-    if (!bitmap) return;
+    const thumb = getThumbnail(frame);
+    setShownFrame(thumb ? thumb.frame : null);
+    if (!thumb) return;
+    const { bitmap } = thumb;
     const scale = Math.min(THUMB_W / bitmap.width, THUMB_H / bitmap.height);
     const w = bitmap.width * scale;
     const h = bitmap.height * scale;
@@ -41,7 +46,8 @@ export function HoverPreview({ anchor, x, frame, timeUs }: HoverPreviewProps): R
   }, [frame]);
 
   const left = Math.round(Math.min(Math.max(8, anchor.left + x - BOX_W / 2), window.innerWidth - BOX_W - 8));
-  const top = Math.round(Math.max(8, anchor.top - BOX_H - 6));
+  const showNote = shownFrame !== null && shownFrame !== frame;
+  const top = Math.round(Math.max(8, anchor.top - BOX_H - (showNote ? NOTE_H : 0) - 6));
 
   return createPortal(
     <div className="wb-preview" style={{ left, top, width: BOX_W }} aria-hidden>
@@ -50,6 +56,11 @@ export function HoverPreview({ anchor, x, frame, timeUs }: HoverPreviewProps): R
         <span>{t('timeline.hoverFrame', { frame })}</span>
         <span className="u-mono">{formatTimecode(timeUs)}</span>
       </div>
+      {showNote ? (
+        <div className="wb-preview-note" data-testid="hover-preview-keyframe">
+          {t('timeline.hoverKeyframe', { frame: shownFrame })}
+        </div>
+      ) : null}
     </div>,
     document.body,
   );

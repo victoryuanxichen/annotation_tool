@@ -15,6 +15,7 @@ const SECTIONS: ReadonlyArray<{ title: MessageKey; rows: Row[] }> = [
       { keys: ['A', 'D'], label: 'help.key.step' },
       { keys: ['Shift+A', 'Shift+D'], label: 'help.key.step10' },
       { keys: ['Z', 'X'], label: 'help.key.firstLast' },
+      { keys: ['Shift+Z', 'Shift+X'], label: 'help.key.prevNextVideo' },
     ],
   },
   {
@@ -37,7 +38,7 @@ const SECTIONS: ReadonlyArray<{ title: MessageKey; rows: Row[] }> = [
     title: 'help.section.editing',
     rows: [
       { keys: ['Mod+Z'], label: 'help.key.undo' },
-      { keys: ['Mod+Shift+Z'], label: 'help.key.redo' },
+      { keys: ['Mod+Shift+Z', 'Ctrl+Y'], label: 'help.key.redo' },
       { keys: ['Esc'], label: 'help.key.escape' },
       { keys: ['Shift+/'], label: 'help.key.help' },
     ],
@@ -60,6 +61,16 @@ const ABOUT: ReadonlyArray<MessageKey> = [
 ];
 
 const EXPORT: ReadonlyArray<MessageKey> = ['ui.help.exportFormats', 'ui.help.exportColumns', 'ui.help.exportEmpty'];
+
+const WORKFLOW: ReadonlyArray<MessageKey> = [
+  'ui.help.throughEnd',
+  'ui.help.editing',
+  'ui.help.phases',
+  'ui.help.batchList',
+  'ui.help.sidecar',
+  'ui.help.recovery',
+  'ui.help.staleTab',
+];
 
 const ENVIRONMENT: ReadonlyArray<MessageKey> = ['ui.help.browser', 'ui.help.offline'];
 
@@ -104,6 +115,12 @@ export function HelpDialog({ onClose }: { onClose: () => void }): ReactElement {
         <h3>{t('help.section.about')}</h3>
         <ul>
           {ABOUT.map((k) => (
+            <li key={k}>{t(k)}</li>
+          ))}
+        </ul>
+        <h3>{t('ui.help.section.workflow')}</h3>
+        <ul>
+          {WORKFLOW.map((k) => (
             <li key={k}>{t(k)}</li>
           ))}
         </ul>

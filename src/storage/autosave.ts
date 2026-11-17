@@ -35,7 +35,8 @@ type TimerHandle = ReturnType<typeof setTimeout>;
 
 /**
  * Coalesces rapid changes into at most one write per debounce window (bounded by max wait) and
- * never has two writes in flight. A conflict blocks further writes until `resolveConflict`.
+ * never has two writes in flight. A conflict blocks further writes *to that draft key* until
+ * `resolveConflict` or `clearConflict`; drafts of other keys (e.g. the next video) still save.
  */
 export class Autosaver {
   private readonly store: AutosaverOptions['store'];
@@ -47,7 +48,8 @@ export class Autosaver {
   private pending: DraftProducer | null = null;
   /** Set when the debounce/max-wait fired or a flush was requested. */
   private due = false;
-  private blocked = false;
+  /** Draft keys whose last write conflicted with a newer stored revision. */
+  private readonly blocked = new Set<string>();
   private firstScheduledAt: number | null = null;
   private timer: TimerHandle | null = null;
   private inFlight: Promise<void> | null = null;
@@ -72,9 +74,13 @@ export class Autosaver {
     return this.pending !== null || this.inFlight !== null;
   }
 
+  /** True while writes to `key` are held back by an unresolved conflict. */
+  isBlocked(key: string): boolean {
+    return this.blocked.has(key);
+  }
+
   schedule(producer: DraftProducer): void {
     this.pending = producer;
-    if (this.blocked) return;
     const t = this.now();
     this.firstScheduledAt ??= t;
     const deadline = Math.min(t + this.debounceMs, this.firstScheduledAt + this.maxWaitMs);
@@ -99,8 +105,16 @@ export class Autosaver {
    */
   resolveConflict(key: string, baseRevision: number): Promise<void> {
     this.revisions.set(key, baseRevision);
-    this.blocked = false;
+    this.blocked.delete(key);
     return this.flush();
+  }
+
+  /**
+   * Unblocks `key` without writing (the caller kept this tab's version elsewhere, e.g. as a
+   * checkpoint, and leaves the newer stored revision in place).
+   */
+  clearConflict(key: string): void {
+    this.blocked.delete(key);
   }
 
   /** Records a revision this tab now knows is stored (e.g. after promotePending). */
@@ -154,7 +168,7 @@ export class Autosaver {
   }
 
   private canWrite(): boolean {
-    return this.pending !== null && this.due && !this.blocked;
+    return this.pending !== null && this.due;
   }
 
   private drain(): Promise<void> {
@@ -182,6 +196,11 @@ export class Autosaver {
       return;
     }
     if (!draft) return;
+    if (this.blocked.has(draft.key)) {
+      // Held until the conflict on this key is resolved; a later schedule may replace it.
+      this.pending ??= producer;
+      return;
+    }
 
     const base = Math.max(draft.revision, this.revisions.get(draft.key) ?? 0);
     this.emit({ state: 'saving', key: draft.key });
@@ -197,7 +216,7 @@ export class Autosaver {
       this.revisions.set(result.record.key, result.record.revision);
       this.emit({ state: 'saved', key: result.record.key, at: result.record.savedAt, record: result.record });
     } else {
-      this.blocked = true;
+      this.blocked.add(draft.key);
       this.pending ??= producer;
       this.clearTimer();
       this.emit({ state: 'conflict', key: draft.key, stored: result.conflict });
