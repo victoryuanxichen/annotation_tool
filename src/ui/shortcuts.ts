@@ -64,7 +64,8 @@ function handle(e: KeyboardEvent): boolean {
     actions.selectRecentSlot(DIGITS[e.code] + (e.shiftKey ? 5 : 0));
     return true;
   }
-  if (e.shiftKey && (e.code === 'Slash' || e.key === '?')) {
+  // Some synthetic/remote keyboards report key '/' with shift held and an empty code.
+  if (e.key === '?' || (e.shiftKey && (e.code === 'Slash' || e.key === '/'))) {
     actions.openDialog({ kind: 'help' });
     return true;
   }
