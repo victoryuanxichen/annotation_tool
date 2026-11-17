@@ -1,0 +1,39 @@
+{
+  "name": "phase-annotator",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Local-first surgical phase annotation workbench for H.264 MP4 video",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5173",
+    "build": "tsc --noEmit -p tsconfig.json && vite build",
+    "start": "node server/serve.mjs",
+    "serve": "node server/serve.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "gen:videos": "node scripts/gen-videos.mjs",
+    "test": "vitest run",
+    "test:unit": "vitest run",
+    "test:e2e": "playwright test",
+    "test:all": "vitest run && playwright test"
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-mono": "5.3.0",
+    "@fontsource/ibm-plex-sans": "5.3.0",
+    "hash-wasm": "4.13.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "zustand": "5.1.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.1",
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.3.0",
+    "fake-indexeddb": "6.2.8",
+    "typescript": "5.9.3",
+    "vite": "8.3.8",
+    "vitest": "5.1.0"
+  }
+}
