@@ -189,7 +189,8 @@ export class DraftStore {
 
   /**
    * Exact sha256 match wins. Otherwise the most recently saved draft with the same fingerprint whose
-   * sha256 is unknown or equal (a fingerprint never overrides a different known sha256).
+   * sha256 is unknown or equal (a fingerprint never overrides a different known sha256). When the
+   * query's sha256 is unknown, any fingerprint match is returned (provisional match).
    */
   findForVideo(query: { sha256?: string | null; fingerprint: string }): Promise<DraftLookup | null> {
     const sha = query.sha256 ?? null;
@@ -209,8 +210,10 @@ export class DraftStore {
       };
       return (): DraftLookup | null => {
         if (bySha) return { record: bySha, match: 'sha256' };
+        // With an unknown sha256 (provisional lookup) any fingerprint match is a candidate; the
+        // caller verifies it once the full hash is known.
         const candidates = byFp
-          .filter((d) => d.sha256 === null || d.sha256 === sha)
+          .filter((d) => sha === null || d.sha256 === null || d.sha256 === sha)
           .sort((a, b) => b.savedAt - a.savedAt);
         return candidates[0] ? { record: candidates[0], match: 'fingerprint' } : null;
       };

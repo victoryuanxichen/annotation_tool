@@ -4,7 +4,7 @@ import { defaultDb, runTransaction, singleRequest, type DbProvider } from './db'
 import { rekeyCheckpointsInTx } from './drafts';
 import { newId } from './tabId';
 
-export type CheckpointKind = 'manual' | 'auto-before-restore' | 'auto-before-import';
+export type CheckpointKind = 'manual' | 'auto-before-restore' | 'auto-before-import' | 'auto-before-conflict';
 
 export interface CheckpointRecord {
   id: string;

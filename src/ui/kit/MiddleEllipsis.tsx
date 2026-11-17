@@ -56,6 +56,13 @@ export function MiddleEllipsis({ text, title, tailRatio, className }: MiddleElli
     const el = ref.current;
     if (!el) return;
     const update = (): void => {
+      // The hidden sizer holds the full text: if the DOM lays it out without overflow it fits,
+      // whatever canvas measurement says (the two differ by sub-pixel amounts).
+      const sizer = el.firstElementChild;
+      if (sizer instanceof HTMLElement && sizer.scrollWidth <= sizer.clientWidth) {
+        setShown(text);
+        return;
+      }
       const style = getComputedStyle(el);
       const font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
       // 1 px slack: canvas and DOM text widths differ by sub-pixel amounts.
