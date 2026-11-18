@@ -12,6 +12,7 @@ import { Icon, type IconName } from '../icons';
 import { Button, IconButton, type ButtonVariant } from './Button';
 import { Kbd } from './Kbd';
 import { Popover } from './Popover';
+import { Tooltip } from './Tooltip';
 import { cx, type Placement } from './internal';
 
 export interface MenuAction {
@@ -64,7 +65,7 @@ export function Menu({ open, onClose, anchorRef, items, placement = 'bottom-end'
     Array.from(listRef.current?.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]:not([disabled])') ?? []);
 
   useEffect(() => {
-    if (open) enabledButtons()[0]?.focus();
+    if (open) enabledButtons()[0]?.focus({ preventScroll: true });
   }, [open]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
@@ -179,7 +180,11 @@ export function MenuButton({
           {children}
         </Button>
       ) : (
-        <IconButton {...common} icon={icon} label={label} variant={variant} size={size} tooltip={!open} />
+        // The Tooltip wrapper stays mounted and is only disabled while open: toggling IconButton's
+        // own `tooltip` prop would swap the wrapper and remount the button, dropping its focus.
+        <Tooltip content={label} disabled={open} describe={false}>
+          <IconButton {...common} icon={icon} label={label} variant={variant} size={size} tooltip={false} />
+        </Tooltip>
       )}
       <Menu open={open} onClose={() => setOpen(false)} anchorRef={anchorRef} items={items} placement={placement} id={menuId} aria-label={label} />
     </>

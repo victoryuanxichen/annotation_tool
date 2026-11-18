@@ -29,6 +29,12 @@ body {
   height: 100%;
 }
 
+/* The dark video stage keeps dark tokens under a light root (tokens.css); inherited text colour
+   must follow, or text without its own colour would be light-theme ink on the dark stage. */
+.theme-dark {
+  color: var(--c-text);
+}
+
 h1,
 h2,
 h3,

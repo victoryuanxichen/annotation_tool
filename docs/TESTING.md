@@ -10,10 +10,11 @@ Google Chrome 155. All material is synthetic.
 | Type check | `npm run typecheck` | 0 errors |
 | Unit tests (vitest, 12 files) | `npm test` | **293 / 293 passed** |
 | Production build | `npm run build` | succeeds (one chunk-size warning, informational) |
-| End-to-end (Playwright, installed Chrome, 6 specs) | `npm run test:e2e` | **103 / 103 passed**, 0 flaky, 2.3 min |
+| End-to-end (Playwright, installed Chrome, 7 specs) | `npm run test:e2e` | **111 / 111 passed**, 0 flaky, 2.4 min |
 
 The full e2e suite ran three times in total: the agents' final verification, an independent re-run before
 the walkthrough, and the interaction and smoke specs again after the last source change. All three were green.
+After the light theme was added, the whole suite (now including `theme.spec.ts`) was re-run once: 111 / 111.
 
 ## Synthetic test videos
 
@@ -132,6 +133,17 @@ checksum). Tests decode the barcode from the app's canvas to check which frame i
 - **Offline**: with the network disabled after load, annotate, export and switch videos work, and no request
   leaves 127.0.0.1. Opening a video right after load while offline also works. The **production build**
   served by `server/serve.mjs` loads and works with zero external requests.
+
+### Appearance (light theme)
+
+`theme.spec.ts` (8 tests, **8 / 8 passed**): dark is the default; choosing Light through the Appearance menu
+updates `data-theme`, the stored setting and the early-paint mirror, turns the app light while the video
+stage stays dark and the barcode still matches the displayed frame; the timeline canvas repaints both ways
+without a reload; Light and Match system are applied before the first paint after a reload; Match system
+follows the emulated OS scheme live; four theme switches leave segments, pending start, selected phase and
+displayed frame untouched; the menu is translated in 繁中; and the menu is keyboard operable (focus moves in,
+arrows move, Esc closes, focus returns to the trigger). Light-theme text contrast was checked separately
+(≥ 4.5:1 for text, ≥ 3:1 where only that is required).
 
 ### Unit tests (293)
 

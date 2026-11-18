@@ -53,6 +53,8 @@
   --c-row-hover: #212428;
   --c-control-border-hover: #4a515a;
   --c-control-active: #31373e;
+  --c-seg-checked-bg: #2b3036;   /* = --c-raised-2 */
+  --c-count-bg: #24282d;         /* tab count pill (= --c-raised) */
   --c-seg-checked-ring: #3d434b;
   --c-float-border: #353b42;     /* popovers, menus, hover preview */
   --c-tooltip-bg: #2c3137;
@@ -102,21 +104,22 @@
   --c-text-faint: #7e8690;      /* 3.6:1 — disabled / non-essential only */
   --c-text-on-accent: #ffffff;
 
-  /* Accent: same hue, darkened for contrast on light surfaces (4.9:1 on white) */
-  --c-accent: #0a7c98;
-  --c-accent-hover: #086a83;
-  --c-accent-press: #06586d;
-  --c-accent-weak: rgb(10 124 152 / 0.1);
-  --c-accent-line: rgb(10 124 152 / 0.45);
+  /* Accent: same hue, darkened for contrast on light surfaces (4.8:1 on --c-bg, 5.5:1 on white,
+     4.6:1 on --c-accent-weak over --c-panel) */
+  --c-accent: #07728c;
+  --c-accent-hover: #06637a;
+  --c-accent-press: #055467;
+  --c-accent-weak: rgb(7 114 140 / 0.1);
+  --c-accent-line: rgb(7 114 140 / 0.45);
 
-  /* Semantic state */
-  --c-ok: #1d7f4e;
-  --c-ok-weak: rgb(29 127 78 / 0.1);
-  --c-warn: #a2620a;
-  --c-warn-weak: rgb(162 98 10 / 0.1);
-  --c-danger: #c23a2c;
-  --c-danger-weak: rgb(194 58 44 / 0.09);
-  --c-danger-press: #a32f23;
+  /* Semantic state: each ≥ 4.5:1 as text on --c-bg, --c-panel, white and its own -weak fill */
+  --c-ok: #1a7547;
+  --c-ok-weak: rgb(26 117 71 / 0.1);
+  --c-warn: #965a08;
+  --c-warn-weak: rgb(150 90 8 / 0.1);
+  --c-danger: #bc382a;
+  --c-danger-weak: rgb(188 56 42 / 0.09);
+  --c-danger-press: #962c21;
   --c-info: var(--c-text-muted);
 
   --c-input-bg: #ffffff;
@@ -124,19 +127,21 @@
   --c-row-hover: #eff1f3;
   --c-control-border-hover: #a3abb4;
   --c-control-active: #dde1e5;
+  --c-seg-checked-bg: #ffffff;   /* a raised white thumb on the recessed track */
+  --c-count-bg: #e7eaed;         /* tab count pill: white would vanish on the panel */
   --c-seg-checked-ring: #c2c8cf;
   --c-float-border: #d3d8dd;
   --c-tooltip-bg: #ffffff;
   --c-tooltip-border: #cdd3d9;
   --c-tooltip-kbd: #eef0f2;
-  --c-tick-major: #8f98a2;
+  --c-tick-major: #7e8690;      /* 3.2:1 on --c-bg */
   --c-scrollbar: #c2c8cf;
   --c-scrollbar-hover: #a3abb4;
-  --c-selection: rgb(10 124 152 / 0.2);
-  --c-danger-hover: #d24a3b;
+  --c-selection: rgb(7 114 140 / 0.2);
+  --c-danger-hover: #a8342a;    /* darker on hover, like the accent (white text 6.6:1) */
   --c-text-on-danger: #ffffff;
-  --c-kbd-inverse-bg: rgb(255 255 255 / 0.18);
-  --c-kbd-inverse-border: rgb(255 255 255 / 0.3);
+  --c-kbd-inverse-bg: rgb(0 0 0 / 0.16);      /* white key label 7:1 on the primary button */
+  --c-kbd-inverse-border: rgb(0 0 0 / 0.18);
   --c-swatch-border: rgb(0 0 0 / 0.18);
   --c-drop-scrim: rgb(238 240 242 / 0.86);
   --c-tl-lane: rgb(0 0 0 / 0.025);
@@ -145,8 +150,8 @@
   --c-tl-window-line: rgb(84 92 102 / 0.55);
   --c-tl-hover: rgb(27 31 36 / 0.3);
   --c-tl-pending-span: rgb(27 31 36 / 0.06);
-  --c-tl-ghost: rgb(10 124 152 / 0.6);
-  --c-tl-playhead-cell: rgb(10 124 152 / 0.14);
+  --c-tl-ghost: rgb(7 114 140 / 0.6);
+  --c-tl-playhead-cell: rgb(7 114 140 / 0.14);
 
   --shadow-float: 0 8px 24px rgb(20 26 32 / 0.14), 0 0 0 1px rgb(20 26 32 / 0.06);
 }
@@ -202,9 +207,7 @@
   --h-md: 28px;
   --h-lg: 32px;
 
-  /* Lines and focus */
-  --hairline: 1px solid var(--c-line);
-  --focus-ring: 2px solid var(--c-accent);
+  /* Lines and focus (--hairline and --focus-ring are declared per theme scope below) */
   --focus-offset: 2px;
 
   /* Motion (≤ 120 ms; zeroed under reduced motion in base.css) */
@@ -220,4 +223,15 @@
   --z-popover: 300;
   --z-toast: 400;
   --z-tooltip: 500;
+}
+
+/*
+ * Shorthands that embed colour tokens. A custom property holding var() is resolved where it is
+ * declared, so these are re-declared on every theme scope: on :root alone, the dark video stage
+ * (.theme-dark) under a light root would inherit light hairlines and a light-theme focus ring.
+ */
+:root,
+.theme-dark {
+  --hairline: 1px solid var(--c-line);
+  --focus-ring: 2px solid var(--c-accent);
 }

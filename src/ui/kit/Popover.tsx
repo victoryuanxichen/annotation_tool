@@ -85,8 +85,8 @@ function PopoverSurface({
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (initialFocus === 'first') (focusableWithin(el)[0] ?? el).focus();
-    else if (initialFocus === 'container') el.focus();
+    if (initialFocus === 'first') (focusableWithin(el)[0] ?? el).focus({ preventScroll: true });
+    else if (initialFocus === 'container') el.focus({ preventScroll: true });
   }, [initialFocus]);
 
   useEffect(() => {
@@ -121,7 +121,10 @@ function PopoverSurface({
     top: pos?.y ?? -9999,
     width,
     maxHeight,
-    visibility: pos ? 'visible' : 'hidden',
+    // Hidden with opacity rather than visibility until placed: a visibility:hidden subtree
+    // cannot take focus, and callers (Menu, initialFocus) focus a child on open.
+    opacity: pos ? undefined : 0,
+    pointerEvents: pos ? undefined : 'none',
   };
 
   return (

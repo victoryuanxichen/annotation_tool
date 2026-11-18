@@ -111,6 +111,13 @@ as `→ 1234` next to the counter. A boundary is committed only after the frame 
 displayed. If that cannot be confirmed (a newer seek replaced it, a decode error, or the video isn't ready),
 the mark is refused with an explanation next to the marking buttons.
 
+### Appearance
+
+The **Appearance** button in the top bar offers **Dark** (the default), **Light** and **Match system** (follows
+the operating system's light/dark setting live). The video stage stays dark in every theme, so footage is
+always judged against the same neutral surround. The choice is stored with the other settings (IndexedDB
+store `kv`) and is applied before the first paint on reload, so the page never flashes the wrong theme.
+
 ## Frame numbering
 
 - Frames are numbered **0…N−1 in presentation order** of the original MP4: samples are sorted by
@@ -243,7 +250,7 @@ node scripts/recover-frames.mjs case_01.mp4 case_01.phases.csv --extract boundar
 | Frame index | Built in memory (in a worker) each time a video is opened, from the MP4's `moov` box only. |
 | Drafts | IndexedDB database `phase-annotator`, store `drafts`, in this browser profile, keyed by the video's **full SHA-256**. While the hash is still being computed (seconds for multi-GB files), edits are saved under a provisional key from a quick fingerprint (size + first/last MiB) and moved to the hash key once it is known. Saved after every change (300 ms debounce, 1 s max wait) and on tab hide/close. |
 | Checkpoints | IndexedDB store `checkpoints`. Automatic checkpoints are created before restoring, before replacing a draft with an imported file, and before resolving a tab conflict. |
-| Phase library, presets, recent phases, settings, language | IndexedDB store `kv`. |
+| Phase library, presets, recent phases, settings (including appearance), language | IndexedDB store `kv`. |
 | Folder permissions | IndexedDB store `handles` (to reconnect the last folder after a reload). |
 | SHA-256 cache | IndexedDB store `hashCache` keyed by name + size + modification time + relative path. |
 | Exports | Beside the video (default), in a folder you choose, or your downloads folder. |

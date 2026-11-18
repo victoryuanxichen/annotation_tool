@@ -82,7 +82,8 @@
 .wb-stage-hint { font-size: 12px; color: var(--c-text-faint); }
 .wb-stage-progress { width: 220px; }
 .wb-stage-banner { position: absolute; top: 12px; left: 12px; right: 12px; z-index: var(--z-banner); }
-.wb-stage-banner .ui-banner { box-shadow: var(--shadow-float); }
+/* Opaque: the banner floats over the video, and the translucent --tone-weak fill let the picture show through the text. */
+.wb-stage-banner .ui-banner { background: color-mix(in srgb, var(--tone) 12%, var(--c-overlay)); box-shadow: var(--shadow-float); }
 .wb-drop {
   position: absolute;
   inset: 8px;
