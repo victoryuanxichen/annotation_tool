@@ -18,6 +18,7 @@ import { boundaryTime, useFrameIndex } from '../../hooks';
 import { LAYOUT, drawTimeline, readColors, type DrawSegment, type TimelineColors, type TimelineModel } from './draw';
 import { HoverPreview } from './HoverPreview';
 import { useTimelineView } from './view';
+import { useResolvedTheme } from '../../theme';
 
 const EDGE_HIT_PX = 5;
 const CLICK_SLOP_PX = 4;
@@ -109,6 +110,7 @@ export function Timeline(): ReactElement {
   const [hover, setHover] = useState<{ x: number; frame: number } | null>(null);
   const [dragBoundary, setDragBoundary] = useState<number | null>(null);
   const [cursor, setCursor] = useState('default');
+  const theme = useResolvedTheme();
 
   // A new video resets the view to the whole video; a re-index of the same video keeps it.
   useEffect(() => {
@@ -129,6 +131,11 @@ export function Timeline(): ReactElement {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  // Canvas colours come from CSS tokens: re-read them when the theme changes (the re-render repaints).
+  useLayoutEffect(() => {
+    if (wrapRef.current) colorsRef.current = readColors(wrapRef.current);
+  }, [theme]);
 
   const drawSegments = useMemo<DrawSegment[]>(() => {
     const flagged = new Set(issues.flatMap((i) => i.segmentIds));

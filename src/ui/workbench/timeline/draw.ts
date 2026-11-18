@@ -24,6 +24,16 @@ export interface TimelineColors {
   faint: string;
   accent: string;
   danger: string;
+  textOnAccent: string;
+  tickMajor: string;
+  lane: string;
+  segShade: string;
+  window: string;
+  windowLine: string;
+  hover: string;
+  pendingSpan: string;
+  ghost: string;
+  playheadCell: string;
   mono: string;
   sans: string;
 }
@@ -41,6 +51,16 @@ export function readColors(el: Element): TimelineColors {
     faint: v('--c-text-faint', '#737b84'),
     accent: v('--c-accent', '#4cc3e0'),
     danger: v('--c-danger', '#ee6b5d'),
+    textOnAccent: v('--c-text-on-accent', '#071519'),
+    tickMajor: v('--c-tick-major', '#4a515a'),
+    lane: v('--c-tl-lane', 'rgb(255 255 255 / 0.018)'),
+    segShade: v('--c-tl-seg-shade', 'rgb(0 0 0 / 0.2)'),
+    window: v('--c-tl-window', 'rgb(154 161 169 / 0.28)'),
+    windowLine: v('--c-tl-window-line', 'rgb(154 161 169 / 0.65)'),
+    hover: v('--c-tl-hover', 'rgb(230 232 235 / 0.28)'),
+    pendingSpan: v('--c-tl-pending-span', 'rgb(230 232 235 / 0.08)'),
+    ghost: v('--c-tl-ghost', 'rgb(76 195 224 / 0.55)'),
+    playheadCell: v('--c-tl-playhead-cell', 'rgb(76 195 224 / 0.16)'),
     mono: v('--font-mono', 'monospace'),
     sans: v('--font-sans', 'sans-serif'),
   };
@@ -162,7 +182,7 @@ function drawRuler(
     for (let f = f0; f <= f1; f += 1) {
       const fx = Math.round(x(index.ptsUs[f])) + 0.5;
       const major = f % k === 0;
-      ctx.fillStyle = major ? '#4a515a' : c.lineStrong;
+      ctx.fillStyle = major ? c.tickMajor : c.lineStrong;
       ctx.fillRect(fx - 0.5, rulerH - (major ? 9 : 4), 1, major ? 9 : 4);
       if (!major) continue;
       ctx.fillStyle = c.muted;
@@ -184,7 +204,7 @@ function drawRuler(
     const tx = Math.round(x(us)) + 0.5;
     if (tx < -1) continue;
     const major = Math.abs(us / majorUs - Math.round(us / majorUs)) < 1e-6;
-    ctx.fillStyle = major ? '#4a515a' : c.lineStrong;
+    ctx.fillStyle = major ? c.tickMajor : c.lineStrong;
     ctx.fillRect(tx - 0.5, rulerH - (major ? 9 : 4), 1, major ? 9 : 4);
     if (major) {
       ctx.fillStyle = c.faint;
@@ -213,7 +233,7 @@ function drawSegments(
     const width = Math.max(1, right - left - (right - left > 3 ? 1 : 0));
     ctx.fillStyle = seg.color;
     ctx.fillRect(left, laneY, width, laneH);
-    ctx.fillStyle = 'rgb(0 0 0 / 0.2)';
+    ctx.fillStyle = c.segShade;
     ctx.fillRect(left, laneY, width, laneH);
     if (seg.issue) {
       const pattern = hatch(ctx, c.danger);
@@ -259,9 +279,9 @@ function drawOverview(ctx: CanvasRenderingContext2D, m: TimelineModel, index: Fr
   ctx.globalAlpha = 1;
   const wx0 = ox(m.startUs);
   const ww = Math.max(6, ox(m.startUs + m.spanUs) - wx0);
-  ctx.fillStyle = 'rgb(154 161 169 / 0.28)';
+  ctx.fillStyle = c.window;
   ctx.fillRect(wx0, ovY, ww, ovH);
-  ctx.strokeStyle = 'rgb(154 161 169 / 0.65)';
+  ctx.strokeStyle = c.windowLine;
   ctx.lineWidth = 1;
   ctx.strokeRect(Math.round(wx0) + 0.5, ovY + 0.5, Math.round(ww) - 1, ovH - 1);
   if (m.displayedFrame !== null) {
@@ -278,7 +298,7 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, m: TimelineModel, c:
   ctx.fillRect(0, 0, w, LAYOUT.height);
   ctx.fillStyle = c.line;
   ctx.fillRect(0, rulerH, w, 1);
-  ctx.fillStyle = 'rgb(255 255 255 / 0.018)';
+  ctx.fillStyle = c.lane;
   ctx.fillRect(0, laneY, w, laneH);
 
   const index = m.index;
@@ -295,7 +315,7 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, m: TimelineModel, c:
     const px = Math.round(frameX(m.pendingStart));
     if (m.displayedFrame !== null && m.displayedFrame > m.pendingStart) {
       const hx = frameX(m.displayedFrame);
-      ctx.fillStyle = 'rgb(230 232 235 / 0.08)';
+      ctx.fillStyle = c.pendingSpan;
       ctx.fillRect(px, rulerH - 2, hx - px, laneY + laneH - rulerH + 4);
     }
     ctx.fillStyle = c.text;
@@ -304,7 +324,7 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, m: TimelineModel, c:
   }
 
   if (m.hoverX !== null) {
-    ctx.fillStyle = 'rgb(230 232 235 / 0.28)';
+    ctx.fillStyle = c.hover;
     ctx.fillRect(Math.round(m.hoverX), 0, 1, laneY + laneH);
   }
 
@@ -319,13 +339,13 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, m: TimelineModel, c:
     const lx = Math.min(Math.max(0, bx - tw / 2), w - tw);
     ctx.fillStyle = c.accent;
     ctx.fillRect(lx, 2, tw, 14);
-    ctx.fillStyle = '#071519';
+    ctx.fillStyle = c.textOnAccent;
     ctx.fillText(label, lx + 4, 12);
   }
 
   if (m.requestedFrame !== null && m.requestedFrame !== m.displayedFrame && m.requestedFrame < n) {
     const gx = Math.round(frameX(m.requestedFrame)) + 0.5;
-    ctx.strokeStyle = 'rgb(76 195 224 / 0.55)';
+    ctx.strokeStyle = c.ghost;
     ctx.lineWidth = 1;
     ctx.setLineDash([3, 3]);
     ctx.beginPath();
@@ -340,7 +360,7 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, m: TimelineModel, c:
     const hx = frameX(f);
     const hw = frameX(f + 1) - hx;
     if (hw >= 3) {
-      ctx.fillStyle = 'rgb(76 195 224 / 0.16)';
+      ctx.fillStyle = c.playheadCell;
       ctx.fillRect(hx, 0, hw, laneY + laneH + 2);
     }
     const lx = Math.round(hx);

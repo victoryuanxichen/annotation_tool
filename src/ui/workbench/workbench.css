@@ -92,7 +92,7 @@
   gap: 8px;
   border: 2px dashed var(--c-accent-line);
   border-radius: var(--r-3);
-  background: rgb(15 17 19 / 0.82);
+  background: var(--c-drop-scrim);
   color: var(--c-text);
   pointer-events: none;
 }
@@ -134,7 +134,7 @@
   position: fixed;
   z-index: var(--z-tooltip);
   padding: 4px;
-  border: 1px solid #353b42;
+  border: 1px solid var(--c-float-border);
   border-radius: var(--r-2);
   background: var(--c-overlay);
   box-shadow: var(--shadow-float);
@@ -188,7 +188,7 @@
 .wb-custom-foot { display: flex; align-items: flex-start; gap: 8px; }
 .wb-form-error { flex: 1; min-height: 16px; font-size: 12px; line-height: 16px; color: var(--c-danger); }
 
-.wb-pendingbox { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 4px 0 10px; border: 1px solid var(--c-line-strong); border-radius: 4px; background: var(--c-bg); }
+.wb-pendingbox { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 4px 0 10px; border: 1px solid var(--c-line-strong); border-radius: 4px; background: var(--c-input-bg); }
 .wb-pendingbox--active { border-color: var(--c-text-muted); box-shadow: inset 2px 0 0 var(--c-text); }
 .wb-pendingbox-label { font-size: 12px; color: var(--c-text-muted); white-space: nowrap; }
 .wb-pendingbox-value { font-family: var(--font-mono); font-size: 14px; font-weight: 500; font-variant-numeric: tabular-nums; }
@@ -220,8 +220,8 @@
 
 table.wb-table { width: 100%; table-layout: fixed; font-size: 12px; }
 .wb-table th { position: sticky; top: 0; z-index: 1; height: 28px; padding: 0 8px; text-align: left; font-weight: 500; font-size: 11px; color: var(--c-text-muted); background: var(--c-panel); border-bottom: var(--hairline); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.wb-table td { height: 32px; padding: 0 8px; border-bottom: 1px solid #24282d; white-space: nowrap; }
-.wb-table tbody tr:hover td { background: #212428; }
+.wb-table td { height: 32px; padding: 0 8px; border-bottom: 1px solid var(--c-line-soft); white-space: nowrap; }
+.wb-table tbody tr:hover td { background: var(--c-row-hover); }
 .wb-table tr.is-selected td { background: var(--c-accent-weak); }
 .wb-table tr.is-selected td:first-child { box-shadow: inset 2px 0 0 var(--c-accent); }
 .wb-table .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
@@ -265,11 +265,11 @@ table.wb-table { width: 100%; table-layout: fixed; font-size: 12px; }
 .wb-validation--ok { color: var(--c-text-muted); }
 .wb-validation--ok .ui-icon { color: var(--c-ok); }
 .wb-validation-head { color: var(--c-danger); }
-.wb-validation-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; padding-left: 20px; border-bottom: 1px solid #24282d; color: var(--c-text); }
+.wb-validation-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; padding-left: 20px; border-bottom: 1px solid var(--c-line-soft); color: var(--c-text); }
 .wb-validation-msg { min-width: 0; }
 .wb-note { display: grid; gap: 8px; justify-items: start; font-size: 12px; color: var(--c-text-muted); }
 .wb-sidecars { display: grid; gap: 4px; }
-.wb-sidecar { padding: 4px 0; border-bottom: 1px solid #24282d; }
+.wb-sidecar { padding: 4px 0; border-bottom: 1px solid var(--c-line-soft); }
 .wb-sidecar-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; gap: 8px; }
 .wb-sidecar-name { font-size: 12px; }
 .wb-sidecar-count { font-size: 11px; color: var(--c-text-muted); white-space: nowrap; }
@@ -291,8 +291,8 @@ table.wb-table { width: 100%; table-layout: fixed; font-size: 12px; }
 .wb-batch-scroll { position: relative; }
 .wb-batch-scroll:focus-visible { outline-offset: -2px; }
 .wb-batch-body { position: relative; }
-.wb-batch-row { position: absolute; left: 0; right: 0; height: 32px; font-size: 12px; border-bottom: 1px solid #24282d; cursor: pointer; }
-.wb-batch-row:hover { background: #212428; }
+.wb-batch-row { position: absolute; left: 0; right: 0; height: 32px; font-size: 12px; border-bottom: 1px solid var(--c-line-soft); cursor: pointer; }
+.wb-batch-row:hover { background: var(--c-row-hover); }
 .wb-batch-row.is-active { background: var(--c-raised); }
 .wb-batch-row.is-current { background: var(--c-accent-weak); box-shadow: inset 2px 0 0 var(--c-accent); }
 .wb-batch-path { min-width: 0; }
@@ -304,7 +304,7 @@ table.wb-table { width: 100%; table-layout: fixed; font-size: 12px; }
 /* ---------------------------------------------------------------- dialogs */
 .help-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px 32px; }
 .help-section h3, .help-about h3 { font-size: 11px; font-weight: 600; color: var(--c-text-muted); margin-bottom: 6px; }
-.help-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 28px; border-bottom: 1px solid #2a2e33; }
+.help-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 28px; border-bottom: 1px solid var(--c-line-soft); }
 .help-keys { display: flex; gap: 6px; flex-shrink: 0; }
 .help-about { margin-top: 20px; padding-top: 16px; border-top: var(--hairline); display: grid; gap: 6px; color: var(--c-text-muted); }
 .help-about h3:not(:first-child) { margin-top: 10px; }
@@ -342,7 +342,7 @@ table.wb-table { width: 100%; table-layout: fixed; font-size: 12px; }
 .wb-preset-phase { display: grid; grid-template-columns: 24px minmax(0, 1fr) 150px auto auto auto; align-items: center; gap: 6px; }
 .wb-preset-phase-id { font-family: var(--font-mono); font-size: 11px; color: var(--c-text-muted); }
 .wb-preset-add { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: start; }
-.wb-color-btn { width: 20px; height: 20px; padding: 0; border: 1px solid rgb(0 0 0 / 0.3); border-radius: var(--r-1); background: var(--chip-color); }
+.wb-color-btn { width: 20px; height: 20px; padding: 0; border: 1px solid var(--c-swatch-border); border-radius: var(--r-1); background: var(--chip-color); }
 .wb-color-btn:hover { outline: 1px solid var(--c-line-strong); outline-offset: 1px; }
 .wb-palette-pop { padding: 8px; }
 .wb-palette { display: grid; grid-template-columns: repeat(6, 24px); gap: 6px; }

@@ -49,6 +49,7 @@ import type {
   ExportStatus,
   IssueView,
   Lang,
+  ThemePref,
   Msg,
   SidecarStatus,
   SortDir,
@@ -369,6 +370,7 @@ class Controller<P extends PlayerLike> {
       }
       settings = {
         language: raw === undefined ? deps.env.detectLang() : stored.language,
+        theme: stored.theme,
         exportFormat: stored.exportFormat,
         exportDestination,
         sort: stored.sort,
@@ -427,6 +429,7 @@ class Controller<P extends PlayerLike> {
         const s = this.s.settings;
         const stored: StoredSettings = {
           language: s.language,
+          theme: s.theme,
           exportFormat: s.exportFormat,
           exportDestination: s.exportDestination.kind === 'folder' ? { kind: 'folder', handleId: EXPORT_FOLDER_HANDLE_ID } : { kind: s.exportDestination.kind },
           sort: s.sort,
@@ -2319,6 +2322,11 @@ class Controller<P extends PlayerLike> {
       retrySave: s(() => void this.autosaver.retry(), undefined),
 
       setLanguage: s((lang: Lang) => this.setLanguage(lang), undefined),
+      setTheme: s((theme: ThemePref) => {
+        if (theme === this.s.settings.theme) return;
+        this.set({ settings: { ...this.s.settings, theme } });
+        this.persistSettings();
+      }, undefined),
       openDialog: s((d: DialogState) => this.set({ dialog: d }), undefined),
       closeDialog: s(() => this.closeDialog(), undefined),
       dismissToast: s((id: number) => this.dismissToast(id), undefined),

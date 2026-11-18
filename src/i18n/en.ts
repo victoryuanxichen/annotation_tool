@@ -45,6 +45,10 @@ export const en = {
   'lang.label': 'Language',
   'lang.en': 'English',
   'lang.zhHant': '繁體中文',
+  'theme.label': 'Appearance',
+  'theme.dark': 'Dark',
+  'theme.light': 'Light',
+  'theme.system': 'Match system',
 
   // ---- App shell / top bar ----
   'app.name': 'Phase Annotator',

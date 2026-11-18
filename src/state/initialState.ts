@@ -3,6 +3,7 @@ import type { AppState, BatchState, EditorState, Settings, VideoState } from './
 
 export const DEFAULT_APP_SETTINGS: Settings = {
   language: 'en',
+  theme: 'dark',
   exportFormat: 'csv',
   exportDestination: { kind: 'beside' },
   sort: { key: 'name', dir: 'asc' },

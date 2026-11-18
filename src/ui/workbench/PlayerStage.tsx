@@ -19,7 +19,7 @@ export function PlayerStage(): ReactElement {
   // Stable ref callback: the controller owns the canvas once attached.
   const canvasRef = useCallback((el: HTMLCanvasElement | null) => actions.attachCanvas(el), []);
   return (
-    <div className="wb-well">
+    <div className="wb-well theme-dark">
       <canvas ref={canvasRef} className="wb-canvas" role="img" aria-label={t('player.canvasLabel')} data-testid="player-canvas" />
       <StageOverlay />
       <StaleBanner />

@@ -43,6 +43,10 @@ export const zhHant: Record<MessageKey, string> = {
   'lang.label': '語言',
   'lang.en': 'English',
   'lang.zhHant': '繁體中文',
+  'theme.label': '外觀',
+  'theme.dark': '深色',
+  'theme.light': '淺色',
+  'theme.system': '跟隨系統',
 
   // ---- App shell / top bar ----
   'app.name': 'Phase Annotator',

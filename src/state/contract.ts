@@ -9,6 +9,8 @@
 import type { Segment, PhaseDef, PhaseLibrary, ExportFormatChoice } from '../core/types';
 
 export type Lang = 'en' | 'zh-Hant';
+/** Colour theme preference; 'system' follows the OS light/dark setting. */
+export type ThemePref = 'dark' | 'light' | 'system';
 export type Params = Record<string, string | number>;
 export interface Msg {
   key: string;
@@ -167,6 +169,7 @@ export type ExportDestination =
 
 export interface Settings {
   language: Lang;
+  theme: ThemePref;
   exportFormat: ExportFormatChoice;
   exportDestination: ExportDestination;
   sort: { key: SortKey; dir: SortDir };
@@ -295,6 +298,7 @@ export interface Actions {
 
   // ui
   setLanguage(lang: Lang): void;
+  setTheme(theme: ThemePref): void;
   openDialog(d: DialogState): void;
   closeDialog(): void;
   dismissToast(id: number): void;

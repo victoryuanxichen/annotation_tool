@@ -4,7 +4,13 @@
  * and yellows: a cool accent stays legible over and next to the footage, and amber is kept
  * free to mean "unsaved / attention" without ambiguity.
  */
-:root {
+/*
+ * Themes: dark (default) and light. The theme is chosen on <html data-theme="…"> by
+ * src/ui/theme.ts. Elements marked .theme-dark (the video stage) keep the dark values in both
+ * themes, so footage is always judged against the same neutral dark surround.
+ */
+:root,
+:root[data-theme='light'] .theme-dark {
   color-scheme: dark;
 
   /* Neutrals (low → high elevation) */
@@ -41,6 +47,111 @@
   --c-danger-press: #d65446;
   --c-info: var(--c-text-muted);
 
+  /* Derived surfaces/lines that used to be literals */
+  --c-input-bg: var(--c-bg);     /* text/number fields: recessed in dark */
+  --c-line-soft: #24282d;        /* table row separators */
+  --c-row-hover: #212428;
+  --c-control-border-hover: #4a515a;
+  --c-control-active: #31373e;
+  --c-seg-checked-ring: #3d434b;
+  --c-float-border: #353b42;     /* popovers, menus, hover preview */
+  --c-tooltip-bg: #2c3137;
+  --c-tooltip-border: #40464e;
+  --c-tooltip-kbd: #24282d;
+  --c-tick-major: #4a515a;
+  --c-scrollbar: #3a4048;
+  --c-scrollbar-hover: #4a515a;
+  --c-selection: rgb(76 195 224 / 0.32);
+  --c-danger-hover: #f27f72;
+  --c-text-on-danger: #1c0a07;
+  --c-kbd-inverse-bg: rgb(0 0 0 / 0.14);
+  --c-kbd-inverse-border: rgb(0 0 0 / 0.16);
+  --c-swatch-border: rgb(0 0 0 / 0.3);
+  --c-drop-scrim: rgb(15 17 19 / 0.82);
+  /* Timeline canvas */
+  --c-tl-lane: rgb(255 255 255 / 0.018);
+  --c-tl-seg-shade: rgb(0 0 0 / 0.2);
+  --c-tl-window: rgb(154 161 169 / 0.28);
+  --c-tl-window-line: rgb(154 161 169 / 0.65);
+  --c-tl-hover: rgb(230 232 235 / 0.28);
+  --c-tl-pending-span: rgb(230 232 235 / 0.08);
+  --c-tl-ghost: rgb(76 195 224 / 0.55);
+  --c-tl-playhead-cell: rgb(76 195 224 / 0.16);
+
+  /* Elevation is for floating layers only (never cards) */
+  --shadow-float: 0 8px 24px rgb(0 0 0 / 0.45), 0 0 0 1px rgb(0 0 0 / 0.25);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  /* Neutrals: cool paper greys, never pure white panels next to the video */
+  --c-well: #e6e9ec;
+  --c-bg: #eef0f2;
+  --c-panel: #f8f9fa;
+  --c-raised: #ffffff;
+  --c-raised-2: #e7eaed;
+  --c-overlay: #ffffff;
+  --c-line: #dce0e4;
+  --c-line-strong: #c2c8cf;
+  --c-scrim: rgb(24 28 33 / 0.32);
+
+  /* Text */
+  --c-text: #1b1f24;            /* 15.8:1 on --c-panel */
+  --c-text-muted: #545c66;      /* 6.6:1 on --c-panel */
+  --c-text-faint: #7e8690;      /* 3.6:1 — disabled / non-essential only */
+  --c-text-on-accent: #ffffff;
+
+  /* Accent: same hue, darkened for contrast on light surfaces (4.9:1 on white) */
+  --c-accent: #0a7c98;
+  --c-accent-hover: #086a83;
+  --c-accent-press: #06586d;
+  --c-accent-weak: rgb(10 124 152 / 0.1);
+  --c-accent-line: rgb(10 124 152 / 0.45);
+
+  /* Semantic state */
+  --c-ok: #1d7f4e;
+  --c-ok-weak: rgb(29 127 78 / 0.1);
+  --c-warn: #a2620a;
+  --c-warn-weak: rgb(162 98 10 / 0.1);
+  --c-danger: #c23a2c;
+  --c-danger-weak: rgb(194 58 44 / 0.09);
+  --c-danger-press: #a32f23;
+  --c-info: var(--c-text-muted);
+
+  --c-input-bg: #ffffff;
+  --c-line-soft: #e8ebee;
+  --c-row-hover: #eff1f3;
+  --c-control-border-hover: #a3abb4;
+  --c-control-active: #dde1e5;
+  --c-seg-checked-ring: #c2c8cf;
+  --c-float-border: #d3d8dd;
+  --c-tooltip-bg: #ffffff;
+  --c-tooltip-border: #cdd3d9;
+  --c-tooltip-kbd: #eef0f2;
+  --c-tick-major: #8f98a2;
+  --c-scrollbar: #c2c8cf;
+  --c-scrollbar-hover: #a3abb4;
+  --c-selection: rgb(10 124 152 / 0.2);
+  --c-danger-hover: #d24a3b;
+  --c-text-on-danger: #ffffff;
+  --c-kbd-inverse-bg: rgb(255 255 255 / 0.18);
+  --c-kbd-inverse-border: rgb(255 255 255 / 0.3);
+  --c-swatch-border: rgb(0 0 0 / 0.18);
+  --c-drop-scrim: rgb(238 240 242 / 0.86);
+  --c-tl-lane: rgb(0 0 0 / 0.025);
+  --c-tl-seg-shade: rgb(0 0 0 / 0.06);
+  --c-tl-window: rgb(84 92 102 / 0.16);
+  --c-tl-window-line: rgb(84 92 102 / 0.55);
+  --c-tl-hover: rgb(27 31 36 / 0.3);
+  --c-tl-pending-span: rgb(27 31 36 / 0.06);
+  --c-tl-ghost: rgb(10 124 152 / 0.6);
+  --c-tl-playhead-cell: rgb(10 124 152 / 0.14);
+
+  --shadow-float: 0 8px 24px rgb(20 26 32 / 0.14), 0 0 0 1px rgb(20 26 32 / 0.06);
+}
+
+:root {
   /* Phase palette (see src/styles/palette.ts) */
   --phase-1: #e5675b;
   --phase-2: #ec9a46;
@@ -95,9 +206,6 @@
   --hairline: 1px solid var(--c-line);
   --focus-ring: 2px solid var(--c-accent);
   --focus-offset: 2px;
-
-  /* Elevation is for floating layers only (never cards) */
-  --shadow-float: 0 8px 24px rgb(0 0 0 / 0.45), 0 0 0 1px rgb(0 0 0 / 0.25);
 
   /* Motion (≤ 120 ms; zeroed under reduced motion in base.css) */
   --dur-fast: 80ms;

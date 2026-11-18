@@ -3,6 +3,7 @@ import type { ExportFormatChoice, PhaseDef, PhaseLibrary, Preset } from '../core
 import { defaultDb, singleRequest, type DbProvider } from './db';
 
 export type Language = 'en' | 'zh-Hant';
+export type ThemePref = 'dark' | 'light' | 'system';
 export type ExportDestinationKind = 'beside' | 'folder' | 'download';
 export type SortKey = 'name' | 'mtime' | 'size';
 export type SortDir = 'asc' | 'desc';
@@ -15,6 +16,7 @@ export interface ExportDestination {
 
 export interface Settings {
   language: Language;
+  theme: ThemePref;
   exportFormat: ExportFormatChoice;
   exportDestination: ExportDestination;
   sort: { key: SortKey; dir: SortDir };
@@ -24,6 +26,7 @@ export interface Settings {
 
 const defaultSettings: Settings = {
   language: 'en',
+  theme: 'dark',
   exportFormat: 'csv',
   exportDestination: { kind: 'beside' },
   sort: { key: 'name', dir: 'asc' },
@@ -63,6 +66,7 @@ export function mergeSettings(raw: unknown, defaults: Settings = DEFAULT_SETTING
   }
   const settings: Settings = {
     language: oneOf(r.language, ['en', 'zh-Hant'], defaults.language),
+    theme: oneOf(r.theme, ['dark', 'light', 'system'], defaults.theme),
     exportFormat: oneOf(r.exportFormat, ['csv', 'json', 'both'], defaults.exportFormat),
     exportDestination,
     sort: {

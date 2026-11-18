@@ -3,6 +3,7 @@ import { setLang, useT } from '../../i18n';
 import { actions, useApp } from '../app';
 import { DialogHost } from '../dialogs/DialogHost';
 import { installShortcuts } from '../shortcuts';
+import { applyTheme } from '../theme';
 import { useUi } from '../uiStore';
 import { isModalOpen, Splitter } from '../kit';
 import { BatchList } from './BatchList';
@@ -45,6 +46,8 @@ export function AppShell(): ReactElement {
   const t = useT();
   const stored = useApp((s) => s.settings.bottomPanelHeight);
   const lang = useApp((s) => s.settings.language);
+  const theme = useApp((s) => s.settings.theme);
+  const ready = useApp((s) => s.ready);
   const setDragOver = useUi((s) => s.setDragOver);
   const winH = useWindowHeight();
   const [live, setLive] = useState<number | null>(null);
@@ -52,6 +55,10 @@ export function AppShell(): ReactElement {
   const height = Math.min(max, Math.max(BOTTOM_MIN, live ?? stored));
 
   useEffect(() => setLang(lang), [lang]);
+  // Until settings are loaded, keep the theme the inline script in index.html applied (no flash).
+  useEffect(() => {
+    if (ready) applyTheme(theme);
+  }, [ready, theme]);
   // The live drag height yields once the persisted value catches up.
   useEffect(() => setLive(null), [stored]);
   useEffect(() => installShortcuts(), []);

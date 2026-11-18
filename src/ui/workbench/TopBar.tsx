@@ -2,7 +2,8 @@ import type { ReactElement } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { LANGS, LANG_LABEL_KEY, formatDateTime, useT } from '../../i18n';
 import { actions, useApp } from '../app';
-import type { Lang } from '../app';
+import type { Lang, ThemePref } from '../app';
+import { useResolvedTheme } from '../theme';
 import { selectCurrentIndex } from '../hooks';
 import { useMsg } from '../msg';
 import { Button, IconButton, MenuButton, MiddleEllipsis, SegmentedControl, StatusDot, type MenuEntry } from '../kit';
@@ -95,6 +96,8 @@ function ExportState(): ReactElement {
 export function TopBar(): ReactElement {
   const t = useT();
   const lang = useApp((s) => s.settings.language);
+  const themePref = useApp((s) => s.settings.theme);
+  const resolvedTheme = useResolvedTheme();
   const { index, total, mode } = useApp(
     useShallow((s) => ({ index: selectCurrentIndex(s), total: s.batch.items.length, mode: s.batch.mode })),
   );
@@ -111,6 +114,14 @@ export function TopBar(): ReactElement {
       onSelect: () => void actions.closeBatch(),
     },
   ];
+
+  const themeItems: MenuEntry[] = (['dark', 'light', 'system'] as const).map((p: ThemePref) => ({
+    id: `theme-${p}`,
+    label: t(`theme.${p}`),
+    icon: p === 'dark' ? 'moon' : p === 'light' ? 'sun' : 'monitor',
+    checked: themePref === p,
+    onSelect: () => actions.setTheme(p),
+  }));
 
   return (
     <header className="wb-top">
@@ -143,6 +154,15 @@ export function TopBar(): ReactElement {
           value={lang}
           onChange={(l) => actions.setLanguage(l)}
           options={LANGS.map((l) => ({ value: l, label: l === 'en' ? 'EN' : '繁中', title: t(LANG_LABEL_KEY[l]) }))}
+        />
+        <MenuButton
+          items={themeItems}
+          label={t('theme.label')}
+          icon={resolvedTheme === 'light' ? 'sun' : 'moon'}
+          placement="bottom-end"
+          variant="ghost"
+          size="sm"
+          className="wb-theme-btn"
         />
         <IconButton
           icon="help"

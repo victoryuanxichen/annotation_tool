@@ -101,7 +101,7 @@ samp {
 }
 
 ::selection {
-  background: rgb(76 195 224 / 0.32);
+  background: var(--c-selection);
   color: var(--c-text);
 }
 
@@ -115,11 +115,11 @@ samp {
   outline-offset: var(--focus-offset);
 }
 
-/* Thin dark scrollbars. Standard properties win in current Chromium; the
+/* Thin, theme-coloured scrollbars. Standard properties win in current Chromium; the
    ::-webkit rules cover older engines. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #3a4048 transparent;
+  scrollbar-color: var(--c-scrollbar) transparent;
 }
 
 ::-webkit-scrollbar {
@@ -132,14 +132,14 @@ samp {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #3a4048;
+  background: var(--c-scrollbar);
   border-radius: 4px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: #4a515a;
+  background-color: var(--c-scrollbar-hover);
 }
 
 ::-webkit-scrollbar-corner {
